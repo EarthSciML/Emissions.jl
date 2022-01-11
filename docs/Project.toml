@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Emissions = "012c4d13-7667-4fbe-b122-e5a8f8c4356a"
