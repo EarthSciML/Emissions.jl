@@ -3,7 +3,7 @@ export g, ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, 
 
   const g = 9.80665
 
-  # ErrAboveModelTop is returned when the plume is above the top model layer.
+  # ErrAboveModelTop is an error that is returned when the plume is above the top model layer.
   ErrAboveModelTop = ErrorException("plume rise > top of grid")
 
   function findLayer(layerHeights::Vector{Float64}, stackHeight::Float64)
