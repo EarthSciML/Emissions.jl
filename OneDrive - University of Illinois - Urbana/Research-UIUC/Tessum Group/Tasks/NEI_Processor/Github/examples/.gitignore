@@ -1,0 +1,4 @@
+echo "OneDrive - University of Illinois - Urbana/Research-UIUC/Tessum Group/Tasks/NEI_Processor/Github/examples/2019neiEmis_1.ipynb" >> .gitignore
+echo "OneDrive - University of Illinois - Urbana/Research-UIUC/Tessum Group/Tasks/NEI_Processor/Github/examples/.gitattributes" >> .gitignore
+echo "OneDrive - University of Illinois - Urbana/Research-UIUC/Tessum Group/Tasks/NEI_Processor/Github/examples/.gitignore" >> .gitignore
+echo "OneDrive - University of Illinois - Urbana/Research-UIUC/Tessum Group/Tasks/NEI_Processor/Github/examples/2017nei.ipynb" >> .gitignore
