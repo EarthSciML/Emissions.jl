@@ -1,6 +1,6 @@
 module Emissions
 export g,
-       ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
+    ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
 
 const g = 9.80665
 
@@ -29,38 +29,38 @@ function calcDeltaH(
         stackTemp,
         stackVel,
         stackDiam::Float64
-)
+    )
     deltaH = 0.0 # Plume rise, (m).
 
     airTemp = temperature[stackLayer]
     windSpd = windSpeed[stackLayer]
 
-    if (stackTemp-airTemp) < 50.0 && stackVel > windSpd && stackVel > 10.0
+    if (stackTemp - airTemp) < 50.0 && stackVel > windSpd && stackVel > 10.0
 
         # Plume is dominated by momentum forces
-        deltaH = stackDiam * (stackVel ^ 1.4) / (windSpd ^ 1.4)
+        deltaH = stackDiam * (stackVel^1.4) / (windSpd^1.4)
 
     else # Plume is dominated by buoyancy forces
         # Bouyancy flux, m4/s3
-        F = g * (stackTemp - airTemp) / stackTemp * stackVel * ((stackDiam/2) ^ 2)
+        F = g * (stackTemp - airTemp) / stackTemp * stackVel * ((stackDiam / 2)^2)
 
         if sClass[stackLayer] > 0.5  # stable conditions
-            deltaH = 29.0 * ((F/s1[stackLayer]) ^ 0.333333333) / (windSpd ^ 0.333333333)
+            deltaH = 29.0 * ((F / s1[stackLayer])^0.333333333) / (windSpd^0.333333333)
 
         else # unstable conditions
-            deltaH = 7.4 * ((F*(stackHeight ^ 2.0)) ^ 0.333333333) / windSpd
+            deltaH = 7.4 * ((F * (stackHeight^2.0))^0.333333333) / windSpd
         end
     end
     if isnan(deltaH)
         throw(
             ErrorException(
-            string(
-            "plume height == NaN ",
-            "deltaH: $(deltaH), stackDiam: $(stackDiam), ",
-            "stackVel: $(stackVel), windSpd: $(windSpd), stackTemp: $(stackTemp), ",
-            "airTemp: $(airTemp), stackHeight: $(stackHeight)"
-        ),
-        ),
+                string(
+                    "plume height == NaN ",
+                    "deltaH: $(deltaH), stackDiam: $(stackDiam), ",
+                    "stackVel: $(stackVel), windSpd: $(windSpd), stackTemp: $(stackTemp), ",
+                    "airTemp: $(airTemp), stackHeight: $(stackHeight)"
+                ),
+            ),
         )
         return deltaH
     end
@@ -87,7 +87,7 @@ function ASME(
         windSpeed,
         sClass,
         s1::Vector{Float64}
-)
+    )
     stackLayer = findLayer(layerHeights, stackHeight)
     deltaH = calcDeltaH(
         stackLayer,
@@ -107,7 +107,7 @@ function ASME(
 end
 
 # calcDeltaHPrecomputed calculates plume rise, the same as calcDeltaH,
-# (ASME, 1973), except that it uses precomputed meteorological parameters.  
+# (ASME, 1973), except that it uses precomputed meteorological parameters.
 function calcDeltaHPrecomputed(
         stackLayer::Int,
         temperature,
@@ -121,71 +121,71 @@ function calcDeltaHPrecomputed(
         windSpeedMinusOnePointFour,
         windSpeedMinusThird,
         windSpeedInverse::Vector{Float64}
-)
+    )
     deltaH = 0.0 # Plume rise, (m).
 
     airTemp = temperature[stackLayer]
     windSpd = windSpeed[stackLayer]
 
-    if (stackTemp-airTemp) < 50.0 && stackVel > windSpd && stackVel > 10.0
+    if (stackTemp - airTemp) < 50.0 && stackVel > windSpd && stackVel > 10.0
 
         # Plume is dominated by momentum forces
-        deltaH = stackDiam * (stackVel ^ 1.4) * windSpeedMinusOnePointFour[stackLayer]
+        deltaH = stackDiam * (stackVel^1.4) * windSpeedMinusOnePointFour[stackLayer]
 
         if isnan(deltaH)
             throw(
                 ErrorException(
-                string(
-                "plumerise: momentum-dominated deltaH is NaN. ",
-                "stackDiam: $(stackDiam), stackVel: $(stackVel), windSpeedMinusOnePointFour: $(windSpeedMinusOnePointFour[stackLayer])"
-            ),
-            ),
+                    string(
+                        "plumerise: momentum-dominated deltaH is NaN. ",
+                        "stackDiam: $(stackDiam), stackVel: $(stackVel), windSpeedMinusOnePointFour: $(windSpeedMinusOnePointFour[stackLayer])"
+                    ),
+                ),
             )
             return deltaH
         end
 
     else  # Plume is dominated by buoyancy forces
         tempDiff = 0.0
-        if stackTemp-airTemp == 0
+        if stackTemp - airTemp == 0
             tempDiff = 0
         else
             tempDiff = 2 * (stackTemp - airTemp) / (stackTemp + airTemp)
         end
 
         # Bouyancy flux, m4/s3
-        F = g * tempDiff * stackVel * ((stackDiam/2) ^ 2)
+        F = g * tempDiff * stackVel * ((stackDiam / 2)^2)
 
         if sClass[stackLayer] > 0.5 && s1[stackLayer] != 0 && F > 0 # stable conditions
 
             # Ideally, we would also use the inverse of S1,
             # but S1 is zero sometimes so that doesn't work well.
-            deltaH = 29.0 * ((F/s1[stackLayer]) ^ 0.333333333) *
-                     windSpeedMinusThird[stackLayer]
+            deltaH = 29.0 * ((F / s1[stackLayer])^0.333333333) *
+                windSpeedMinusThird[stackLayer]
 
             if isnan(deltaH)
                 throw(
                     ErrorException(
-                    string(
-                    "plumerise: stable bouyancy-dominated deltaH is NaN. ",
-                    "F: $(F), s1: $(s1[stackLayer]), windSpeedMinusThird: $(windSpeedMinusThird[stackLayer])"
-                ),
-                ),
+                        string(
+                            "plumerise: stable bouyancy-dominated deltaH is NaN. ",
+                            "F: $(F), s1: $(s1[stackLayer]), windSpeedMinusThird: $(windSpeedMinusThird[stackLayer])"
+                        ),
+                    ),
                 )
                 return deltaH
             end
 
         elseif F > 0.0  # unstable conditions
-            deltaH = 7.4 * ((F*(stackHeight ^ 2.0)) ^ 0.333333333) *
-                     windSpeedInverse[stackLayer]
+            deltaH = 7.4 * ((F * (stackHeight^2.0))^0.333333333) *
+                windSpeedInverse[stackLayer]
 
             if isnan(deltaH)
                 throw(
                     ErrorException(
-                    string(
-                    "plumerise: unstable bouyancy-dominated deltaH is NaN. ",
-                    "F: $(F), stackHeight: $(stackHeight), windSpeedInverse: $(windSpeedInverse[stackLayer])"
-                ),
-                ),
+                        string(
+                            "plumerise: unstable bouyancy-dominated deltaH is NaN. ",
+                            "F: $(F), stackHeight: $(stackHeight), windSpeedInverse: $(windSpeedInverse[stackLayer])"
+                        ),
+                    ),
                 )
                 return deltaH
             end
@@ -218,7 +218,7 @@ function ASMEPrecomputed(
         windSpeedMinusOnePointFour,
         windSpeedMinusThird,
         windSpeedInverse::Vector{Float64}
-)
+    )
     stackLayer = findLayer(layerHeights, stackHeight)
     deltaH = calcDeltaHPrecomputed(
         stackLayer,
