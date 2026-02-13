@@ -67,7 +67,7 @@ end
     catch err
         @test err isa Exception
         @test sprint(showerror, err) ==
-              "plume height == NaN deltaH: NaN, stackDiam: 10.0, stackVel: 20.0, windSpd: 14.0, stackTemp: 80.0, airTemp: 15, stackHeight: 100.0"
+            "plume height == NaN deltaH: NaN, stackDiam: 10.0, stackVel: 20.0, windSpd: 14.0, stackTemp: 80.0, airTemp: 15, stackHeight: 100.0"
     end
 end
 
@@ -115,7 +115,7 @@ end
         windSpeedMinusOnePointFour,
         windSpeedMinusThird,
         windSpeedInverse
-    ) - 6628.9080 < 0.0001
+    ) - 6628.908 < 0.0001
 
     @test calcDeltaHPrecomputed(
         3,
@@ -270,11 +270,11 @@ end
 
     @test_throws ErrorException(
         string(
-        "plume height == NaN ",
-        "deltaH: NaN, stackDiam: 10.0, ",
-        "stackVel: 20.0, windSpd: 14.0, stackTemp: 100.0, ",
-        "airTemp: 15.0, stackHeight: 40.0"
-    ),
+            "plume height == NaN ",
+            "deltaH: NaN, stackDiam: 10.0, ",
+            "stackVel: 20.0, windSpd: 14.0, stackTemp: 100.0, ",
+            "airTemp: 15.0, stackHeight: 40.0"
+        ),
     ) ASME(
         40.0,
         stackDiam,
