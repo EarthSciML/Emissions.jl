@@ -15,6 +15,7 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
+        "Complete Tutorial" => "tutorial.md",
         "NEI Processing" => "nei_processing.md",
     ],
     checkdocs = :none
