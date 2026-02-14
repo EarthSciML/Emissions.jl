@@ -1,3 +1,5 @@
+using Printf: @sprintf
+
 export location_key, compute_grid_indices, refine_indices_with_surrogates,
     allocate_emissions_to_grid, process_emissions_spatial
 
