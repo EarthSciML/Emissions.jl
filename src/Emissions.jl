@@ -1,4 +1,6 @@
 module Emissions
+export g,
+    ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
 
 using CSV
 using DataFrames
@@ -40,8 +42,5 @@ export generate_data_sparse_matrices, generate_weight_sparse_matrices, generate_
 
 # Output functions
 export writeEmis, find_surrogate_by_code, get_data_weight_shapefiles
-
-# Plume rise calculations
-export g, ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
 
 end
