@@ -18,6 +18,7 @@ makedocs(;
         "Home" => "index.md",
         "Complete Tutorial" => "tutorial.md",
         "NEI Processing" => "nei_processing.md",
+        "Spatial Processing Pipeline" => "spatial_processing.md",
     ],
     checkdocs = :none
 )

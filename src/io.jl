@@ -1,5 +1,5 @@
-export strip_missing, getCountry, read_grid, getShapefilePath,
-    validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
+export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
+    getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
 
 """
     strip_missing(df::DataFrame)
@@ -35,6 +35,69 @@ function getCountry(fips::AbstractString)
     else
         return "Unknown"
     end
+end
+
+"""
+    normalize_country(country::AbstractString) -> String
+
+Normalize country codes to standard three-letter format.
+Maps "US" -> "USA", "0" -> "USA", "1" -> "Canada", "2" -> "Mexico".
+Already-standard codes are passed through unchanged.
+"""
+function normalize_country(country::AbstractString)
+    c = strip(country)
+    if c == "US" || c == "0"
+        return "USA"
+    elseif c == "1"
+        return "Canada"
+    elseif c == "2"
+        return "Mexico"
+    else
+        return String(c)
+    end
+end
+
+"""
+    read_gridref(file_path::AbstractString) -> DataFrame
+
+Read a SMOKE-format semicolon-delimited grid reference file.
+Lines starting with `#` are skipped. Each data line has the format:
+`FIPS;SCC;Surrogate!comment`
+
+Extracts COUNTRY from 6-digit FIPS codes and normalizes via [`normalize_country`](@ref).
+Returns a DataFrame with columns: `[:COUNTRY, :FIPS, :SCC, :Surrogate]`.
+"""
+function read_gridref(file_path::AbstractString)
+    lines = readlines(file_path)
+    records = DataFrame(COUNTRY=String[], FIPS=String[], SCC=String[], Surrogate=Int[])
+    for line in lines
+        line = strip(line)
+        if isempty(line) || startswith(line, "#")
+            continue
+        end
+        # Remove inline comments after '!'
+        if occursin('!', line)
+            line = strip(split(line, '!')[1])
+        end
+        parts = split(line, ';')
+        if length(parts) >= 3
+            fips_raw = strip(parts[1])
+            scc = strip(parts[2])
+            surrogate = parse(Int, strip(parts[3]))
+
+            # Extract country from 6-digit FIPS
+            if length(fips_raw) == 6
+                country_digit = string(fips_raw[1])
+                fips = lpad(fips_raw[2:end], 5, '0')
+            else
+                country_digit = "0"
+                fips = lpad(fips_raw, 5, '0')
+            end
+            country = normalize_country(country_digit)
+            push!(records, (COUNTRY=country, FIPS=fips, SCC=scc, Surrogate=surrogate))
+        end
+    end
+    return records
 end
 
 """
