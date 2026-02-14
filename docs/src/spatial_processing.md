@@ -268,23 +268,102 @@ for code in codes
 end
 ```
 
+### Advanced Surrogate Generation
+
+For more complex spatial allocation scenarios, you can generate surrogate matrices directly from shapefiles using the low-level surrogate generation functions. This example demonstrates how to create county surrogates from census and employment data:
+
+```@example workflow
+# =============================================================================
+# Step 7: Advanced Surrogate Generation from Shapefiles
+# =============================================================================
+# This demonstrates the workflow for generating surrogates when you have
+# county polygons and weight data (e.g., population, employment) shapefiles
+
+# In a real application, you would call these functions:
+#
+# 1. Generate county polygon matrices
+# data_matrices = generate_data_sparse_matrices(
+#     "counties.shp", "FIPS", grid, "EPSG:4326"
+# )
+#
+# 2. Generate weight matrices (e.g., from census blocks)
+# weight_matrices = generate_weight_sparse_matrices(
+#     "census_blocks.shp", ["POPULATION"], [1.0], grid, "EPSG:4326"
+# )
+#
+# 3. Generate grid matrices for normalization
+# grid_matrices = generate_grid_sparse_matrices(grid)
+#
+# 4. Combine into county-level surrogates
+# county_surrogates = generate_countySurrogate(
+#     data_matrices, weight_matrices, grid_matrices
+# )
+
+# For demonstration, we'll show the expected data structure:
+println("Example surrogate matrix structure:")
+example_matrix = sparse([1, 1, 2], [1, 2, 1], [0.6, 0.4, 1.0], 4, 4)
+println("Matrix dimensions: ", size(example_matrix))
+println("Non-zero entries: ", nnz(example_matrix))
+println("Row sums: ", [sum(example_matrix[i, :]) for i in 1:size(example_matrix, 1)])
+```
+
+```@example workflow
+# =============================================================================
+# Step 8: Demonstrating Data Weight Mapping
+# =============================================================================
+# The build_data_weight_map function identifies which shapefiles are needed
+# for the surrogate generation process
+
+# Example surrogate specifications (normally read from SMOKE surrogate files)
+# SurrogateSpec constructor: Region, Name, Code, DataShapefile, DataAttribute,
+# WeightShapefile, Details, BackupSurrogateNames, WeightColumns, WeightFactors,
+# FilterFunction, MergeNames, MergeMultipliers
+surrogate_specs = [
+    SurrogateSpec("USA", "Population", 100, "counties.shp", "FIPS",
+                  "census.shp", "Population surrogate", String[],
+                  ["POP2020"], [1.0], "", String[], Float64[]),
+    SurrogateSpec("USA", "Employment", 200, "counties.shp", "FIPS",
+                  "employment.shp", "Employment surrogate", String[],
+                  ["JOBS"], [1.0], "", String[], Float64[])
+]
+
+# In practice, you would use:
+# data_weight_map = build_data_weight_map(emissions_with_surrogates, surrogate_specs)
+# This returns a mapping of which data and weight shapefiles are needed
+
+println("Surrogate specifications loaded: ", length(surrogate_specs))
+for spec in surrogate_specs
+    println("  Surrogate $(spec.Code): $(spec.Name)")
+    println("    Data: $(spec.DataShapefile) ($(spec.DataAttribute))")
+    println("    Weight: $(spec.WeightShapefile) ($(spec.WeightColumns))")
+end
+```
+
 ## Relationship to Reference Workflow
 
 These functions implement the complete emissions spatial processing workflow from the
 [2019 NEI emissions notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
 
-| Notebook Step | Function |
-|:---|:---|
-| Read FF10 files | [`read_ff10`](@ref) |
-| Concatenate and aggregate | [`aggregate_emissions`](@ref) |
-| Filter pollutants | [`filter_known_pollutants`](@ref) |
-| Map pollutant names | [`map_pollutant_names!`](@ref) |
-| Assign surrogates via grid ref | [`assign_surrogates`](@ref) |
-| Build shapefile map | [`build_data_weight_map`](@ref) |
-| Compute grid indices | [`compute_grid_indices`](@ref) |
-| Generate sparse matrices | [`generate_data_sparse_matrices`](@ref), [`generate_weight_sparse_matrices`](@ref), [`generate_grid_sparse_matrices`](@ref) |
-| Compute county surrogates | [`generate_countySurrogate`](@ref) |
-| Refine with surrogates | [`refine_indices_with_surrogates`](@ref) |
-| Allocate to grid | [`allocate_emissions_to_grid`](@ref) |
-| Complete workflow | [`process_emissions_spatial`](@ref) |
-| Write output | [`writeEmis`](@ref) |
+| Notebook Step | Function | Notes |
+|:---|:---|:---|
+| Read FF10 files | [`read_ff10`](@ref) | ✓ Complete |
+| Concatenate and aggregate | [`aggregate_emissions`](@ref) | ✓ Complete |
+| Filter pollutants | [`filter_known_pollutants`](@ref) | ✓ Complete |
+| Map pollutant names | [`map_pollutant_names!`](@ref) | ✓ Complete |
+| Assign surrogates via grid ref | [`assign_surrogates`](@ref) | ✓ Complete |
+| Build shapefile map | [`build_data_weight_map`](@ref) | ✓ Complete |
+| Compute grid indices | [`compute_grid_indices`](@ref) | ✓ Complete |
+| Generate sparse matrices | [`generate_data_sparse_matrices`](@ref), [`generate_weight_sparse_matrices`](@ref), [`generate_grid_sparse_matrices`](@ref) | ⚠ Function signatures differ from notebook |
+| Compute county surrogates | [`generate_countySurrogate`](@ref) | ✓ Complete |
+| Refine with surrogates | [`refine_indices_with_surrogates`](@ref) | ✓ Complete |
+| Allocate to grid | [`allocate_emissions_to_grid`](@ref) | ✓ Complete |
+| Complete workflow | [`process_emissions_spatial`](@ref) | ✓ Complete |
+| Write output | [`writeEmis`](@ref) | ⚠ Simplified API, outputs DataFrame instead of shapefile |
+
+**Notes on Implementation Differences:**
+
+- **Sparse matrix functions**: The implementation uses `GridDef` objects instead of explicit bounds/resolution parameters for better type safety and consistency with the rest of the package.
+- **Weight matrix generation**: The implementation accepts pre-processed weight columns and factors instead of dynamic filter functions, providing a more predictable API.
+- **Output format**: The `writeEmis` function outputs structured DataFrames suitable for further processing, rather than directly writing shapefiles.
+
+These differences make the implementation more composable and testable while maintaining full compatibility with the workflow described in the reference notebook.
