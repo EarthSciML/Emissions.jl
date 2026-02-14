@@ -33,7 +33,9 @@ function read_crs_epsg(shapefile_path::AbstractString)
     if isempty(identified)
         error("Could not identify EPSG code for CRS in $prj_path")
     end
-    code_str = Proj.proj_get_id_code(identified[1].pj, 0)
+    # Use the crs field from the NamedTuple returned by identify
+    crs_obj = identified[1].crs
+    code_str = Proj.proj_get_id_code(crs_obj.pj, 0)
     return parse(Int, code_str)
 end
 

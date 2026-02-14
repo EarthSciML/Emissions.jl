@@ -44,6 +44,69 @@ function NewGridIrregular(name::String, nx::Int, ny::Int, sr::String,
 end
 
 """
+    NewGridIrregular(name, filepath, inputSR, outputSR)
+
+Create an irregular grid by reading polygon coordinates from a file.
+The file should contain polygon coordinate strings in the format used by the NEI processing notebook.
+"""
+function NewGridIrregular(name::String, filepath::String, inputSR::String, outputSR::String)
+    cells = LibGEOS.Polygon[]
+    extents = Vector{Tuple{Float64,Float64}}[]
+    regex = r"X:(-?\d+(\.\d+)?(e[+\-]?\d+)?) Y:(-?\d+(\.\d+)?(e[+\-]?\d+)?)"
+    trans = Proj.Transformation(inputSR, outputSR)
+
+    open(filepath, "r") do file
+        content = read(file, String)
+        polygon_strs = split(replace(content, '\n' => ""), "]] [[")
+
+        for polygon_str in polygon_strs
+            cleaned_str = replace(polygon_str, r"[\[\]]" => "")
+            matches = collect(eachmatch(regex, cleaned_str))
+
+            if !isempty(matches)
+                wkt_points = Float64[]
+                extent_x = Float64[]
+                extent_y = Float64[]
+
+                for match in matches
+                    x1 = parse(Float64, match.captures[1])
+                    y1 = parse(Float64, match.captures[4])
+                    x, y = trans([x1, y1])
+                    push!(wkt_points, x, y)
+                    push!(extent_x, x)
+                    push!(extent_y, y)
+                end
+
+                # Create WKT polygon string
+                wkt_coords = [string(wkt_points[i], " ", wkt_points[i+1]) for i in 1:2:length(wkt_points)]
+                # Close the polygon by adding the first point at the end
+                if !isempty(wkt_coords) && wkt_coords[1] != wkt_coords[end]
+                    push!(wkt_coords, wkt_coords[1])
+                end
+                wkt = "POLYGON((" * join(wkt_coords, ", ") * "))"
+
+                try
+                    poly = LibGEOS.readgeom(wkt)
+                    push!(cells, poly)
+                    push!(extents, [(minimum(extent_x), minimum(extent_y)),
+                                   (maximum(extent_x), maximum(extent_y))])
+                catch e
+                    @warn "Failed to create polygon from coordinates: $e"
+                    continue
+                end
+            end
+        end
+    end
+
+    # Infer grid dimensions from number of cells
+    ncells = length(cells)
+    nx = isqrt(ncells)  # Approximate square grid
+    ny = ncells ÷ nx + (ncells % nx > 0 ? 1 : 0)
+
+    return GridDef(name, nx, ny, outputSR, cells, extents)
+end
+
+"""
     setupSpatialProcessor(config::Config)
 
 Set up a `SpatialProcessor` from a configuration object. Reads grid reference files,
@@ -54,11 +117,18 @@ function setupSpatialProcessor(config::Config)
 
     srgSpecs = readSrgSpecSMOKE(config.SrgSpec, config.SrgShapefileDirectory)
 
-    # Read grid from file
-    gridData = read_grid(config.GridFile)
-
-    # Create a simple grid (placeholder - real implementation would parse grid file)
-    grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+    # Create grid from file if it exists, otherwise create a default grid
+    if isfile(config.GridFile)
+        try
+            grid = NewGridIrregular(config.GridName, config.GridFile, config.InputSR, config.OutputSR)
+        catch e
+            @warn "Failed to read grid file $(config.GridFile): $e. Using default 1x1 grid."
+            grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+        end
+    else
+        @warn "Grid file $(config.GridFile) not found. Using default 1x1 grid."
+        grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+    end
 
     return NewSpatialProcessor(srgSpecs, grid, gridRef, config.InputSR, false)
 end

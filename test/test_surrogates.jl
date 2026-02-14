@@ -69,11 +69,11 @@ using SparseArrays
         end
 
         result = Emissions.read_crs_epsg(temp_prj)
-        @test result isa String
-        @test startswith(result, "+proj=")
+        @test result isa Int
+        @test result == 4326  # WGS84 EPSG code
 
         # Test with non-existent file
-        @test_throws SystemError Emissions.read_crs_epsg("nonexistent.prj")
+        @test_throws ErrorException Emissions.read_crs_epsg("nonexistent.prj")
 
         # Cleanup
         rm(temp_prj)
