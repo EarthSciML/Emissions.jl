@@ -14,7 +14,12 @@ makedocs(;
         assets = String[],
         repolink = "https://github.com/EarthSciML/Emissions.jl",
     ),
-    pages = ["Home" => "index.md"]
+    pages = [
+        "Home" => "index.md",
+        "Complete Tutorial" => "tutorial.md",
+        "NEI Processing" => "nei_processing.md",
+    ],
+    checkdocs = :none
 )
 
 deploydocs(; repo = "github.com/EarthSciML/Emissions.jl.git")
