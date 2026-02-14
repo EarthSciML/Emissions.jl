@@ -13,7 +13,10 @@ makedocs(;
         canonical = "https://ctessum.github.io/Emissions.jl",
         assets = String[]
     ),
-    pages = ["Home" => "index.md"]
+    pages = [
+        "Home" => "index.md",
+        "NEI Processing" => "nei_processing.md",
+    ]
 )
 
 deploydocs(; repo = "github.com/ctessum/Emissions.jl", devbranch = "main")
