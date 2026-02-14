@@ -2,11 +2,12 @@
 
 ## Overview
 
-The Emissions.jl package provides a set of mid-level pipeline functions that connect the low-level
-building blocks (FF10 readers, surrogate matrices, spatial indexing) into a complete spatial
-processing workflow for EPA NEI emissions data.
+The Emissions.jl package provides a set of mid-level pipeline functions that bridge the gap
+between low-level building blocks (FF10 readers, surrogate matrices, spatial indexing) and
+the complete spatial processing workflow demonstrated in the
+[reference notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
 
-The pipeline functions handle the common steps of:
+These pipeline functions handle the **data preparation phase** of emissions processing:
 1. Reading multiple FF10-format emissions files
 2. Aggregating and filtering emissions records
 3. Mapping pollutant identifiers to standard group names
@@ -15,6 +16,11 @@ The pipeline functions handle the common steps of:
 
 These functions operate on DataFrames and do not require specific file formats, so users can
 load data however they want and pass DataFrames to the pipeline.
+
+**Note**: This pipeline covers the initial data preparation steps. For complete spatial processing
+including matrix generation, surrogate computation, and emissions output, users should combine
+these functions with the lower-level spatial processing functions (`generate_data_sparse_matrices`,
+`generate_weight_sparse_matrices`, etc.) as shown in the examples.
 
 ## Pipeline Functions
 
@@ -115,6 +121,24 @@ for (key, labels) in shapefile_map
 end
 ```
 
+### Complete Workflow Integration
+
+Here's how these pipeline functions connect to the complete spatial processing workflow:
+
+```@example pipeline
+# After using the pipeline functions above, continue with spatial processing:
+
+# Step 6: Create spatial processor configuration
+# This requires grid definitions, which would typically be loaded from files
+println("Pipeline functions prepare data for spatial processing...")
+println("Next steps would involve:")
+println("1. Loading grid definitions with read_grid() or NewGridIrregular()")
+println("2. Setting up spatial processor with NewSpatialProcessor()")
+println("3. Generating sparse matrices with generate_data_sparse_matrices()")
+println("4. Computing surrogates with generate_countySurrogate()")
+println("5. Writing output with writeEmis()")
+```
+
 ## Analysis
 
 ### Surrogate Assignment with Fallback
@@ -158,3 +182,17 @@ for code in codes
     println("\"$code\" => \"$(normalize_country(code))\"")
 end
 ```
+
+## Relationship to Reference Workflow
+
+These pipeline functions implement the **data preparation steps 1-6** from the complete
+emissions spatial processing workflow demonstrated in the
+[2019 NEI emissions notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
+
+The complete workflow includes additional steps:
+- **Steps 7-9**: Sparse matrix generation from shapefiles (`generate_data_sparse_matrices`, `generate_weight_sparse_matrices`, `generate_grid_sparse_matrices`)
+- **Steps 10-11**: Surrogate computation and location index refinement (`generate_countySurrogate`, `update_locIndex`)
+- **Step 12**: Emissions output to shapefiles (`writeEmis`)
+
+These additional functions are available in Emissions.jl but operate at a lower level,
+requiring more detailed configuration of grid definitions and spatial processors.
