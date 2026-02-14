@@ -113,11 +113,9 @@ using SparseArrays
         @test size(unique_coords, 1) <= 4  # Should deduplicate
 
         # Test location mapping
-        coords_df = DataFrame(
-            LON = [-100.0, -100.0, -101.0, -101.0],
-            LAT = [40.0, 40.0, 41.0, 41.0]
-        )
-        location_map = uniqueLoc(coords_df, :FIPS_TEST, ["Test1", "Test1", "Test2", "Test2"])
+        lons = [-100.0, -100.0, -101.0, -101.0]
+        lats = [40.0, 40.0, 41.0, 41.0]
+        location_map = uniqueLoc(lons, lats)
         @test location_map isa Dict
     end
 
@@ -126,6 +124,9 @@ using SparseArrays
         temp_gridref = tempname() * ".csv"
         temp_srgspec = tempname() * ".csv"
         temp_dir = mktempdir()
+
+        # Create test grid for this test set
+        test_grid = NewGridIrregular("TestGrid", 2, 2, "+proj=lcc", 1000.0, 1000.0, 0.0, 0.0)
 
         # Write test grid reference file
         test_gridref = DataFrame(
@@ -136,7 +137,25 @@ using SparseArrays
         )
         CSV.write(temp_gridref, test_gridref)
 
-        # Write test surrogate specification file
+        # Write test surrogate specification file (without headers for SMOKE format)
+        test_srgspec_data = DataFrame(
+            col1 = ["USA"],
+            col2 = ["Test Population"],
+            col3 = [100],
+            col4 = ["pop.shp"],
+            col5 = ["POP"],
+            col6 = ["area.shp"],
+            col7 = ["Test surrogate"],
+            col8 = [""],
+            col9 = ["AREA"],
+            col10 = [1.0],
+            col11 = [""],
+            col12 = [""],
+            col13 = [""]
+        )
+        CSV.write(temp_srgspec, test_srgspec_data; header=false)
+
+        # Create test_srgspec for later use
         test_srgspec = DataFrame(
             Region = ["USA"],
             Name = ["Test Population"],
@@ -152,7 +171,6 @@ using SparseArrays
             MergeNames = [""],
             MergeMultipliers = [missing]
         )
-        CSV.write(temp_srgspec, test_srgspec)
 
         # Create test configuration
         config = Config(
@@ -168,18 +186,26 @@ using SparseArrays
         )
 
         # Test NewSpatialProcessor creation
-        sp = NewSpatialProcessor([test_srgspec[1, :]], test_grid, test_gridref, config.InputSR, false)
+        # Convert DataFrame row to SurrogateSpec
+        row = test_srgspec[1, :]
+        test_surrogatespec = SurrogateSpec(
+            row.Region, row.Name, row.Code, row.DataShapefile, row.DataAttribute,
+            row.WeightShapefile, row.Details, [row.BackupSurrogateNames],
+            [row.WeightColumns], [row.WeightFactors], row.FilterFunction,
+            [row.MergeNames], ismissing(row.MergeMultipliers) ? Float64[] : [row.MergeMultipliers]
+        )
+        sp = NewSpatialProcessor([test_surrogatespec], test_grid, test_gridref, config.InputSR, false)
         @test sp isa SpatialProcessor
         @test length(sp.SrgSpecs) == 1
         @test sp.GridRef isa DataFrame
 
         # Test setupSpatialProcessor (should handle missing grid file gracefully)
         @test_logs (:warn, r"Grid file .* not found") begin
-            sp2, gd = setupSpatialProcessor(config)
+            sp2 = setupSpatialProcessor(config)
             @test sp2 isa SpatialProcessor
-            @test gd isa GridDef
-            @test gd.Nx == 1  # Should fall back to 1x1 grid
-            @test gd.Ny == 1
+            @test sp2.Grids isa GridDef
+            @test sp2.Grids.Nx == 1  # Should fall back to 1x1 grid
+            @test sp2.Grids.Ny == 1
         end
 
         # Cleanup

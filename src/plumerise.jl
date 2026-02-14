@@ -1,6 +1,11 @@
 export g,
        ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
 
+"""
+    g
+
+Gravitational acceleration (9.80665 m/s²).
+"""
 const g = 9.80665
 
 # ErrAboveModelTop is an error that is returned when the plume is above the top model layer.

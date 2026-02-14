@@ -20,9 +20,9 @@ const tonpermonth = 907.185u"kg" / 2_628_288u"s"
     foot
 
 Conversion factor from feet to meters.
-1 foot = 1/3.28084 meters.
+1 foot = 0.3048 meters.
 """
-const foot = (1 / 3.28084)u"m"
+const foot = 0.3048u"m"
 
 """
     kelvin(F)

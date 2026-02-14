@@ -12,7 +12,7 @@ using Unitful
     end
 
     @testset "foot" begin
-        @test foot ≈ (1 / 3.28084)u"m"
+        @test foot ≈ 0.3048u"m"
         @test unit(foot) == u"m"
     end
 
