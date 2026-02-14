@@ -56,6 +56,9 @@ using SparseArrays
             COMMENT = ["Test", "Test", "Test", "Test"]
         )
 
+        # Save original value before FF10NonPointDataFrame mutates the DataFrame in-place
+        original_value = synthetic_data[1, :ANN_VALUE]  # tons/year (plain Float64)
+
         # Test FF10 data loading and unit conversion
         ff10_data = FF10NonPointDataFrame(synthetic_data)
         processed_emis = ff10_data.df
@@ -64,7 +67,6 @@ using SparseArrays
         @test size(processed_emis, 2) == 45
 
         # Verify unit conversion happened (tons/year to kg/s)
-        original_value = synthetic_data[1, :ANN_VALUE]  # tons/year
         converted_value = processed_emis[1, :ANN_VALUE]  # kg/s (with units)
         # Check that units are present and the value was converted
         @test unit(converted_value) == u"kg/s"
@@ -109,8 +111,8 @@ using SparseArrays
         lon_vec = [-100.0, -100.0, -101.0, -101.0]
         lat_vec = [40.0, 40.0, 41.0, 41.0]
         unique_coords = uniqueCoordinates(lon_vec, lat_vec)
-        @test unique_coords isa DataFrame
-        @test size(unique_coords, 1) <= 4  # Should deduplicate
+        @test unique_coords isa Vector{Int}
+        @test length(unique_coords) <= 4  # Should deduplicate
 
         # Test location mapping
         lons = [-100.0, -100.0, -101.0, -101.0]
