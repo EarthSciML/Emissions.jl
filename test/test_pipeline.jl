@@ -1,4 +1,4 @@
-using DataFrames, CSV, Unitful
+using DataFrames, CSV, Unitful, Emissions
 
 @testset "Pipeline tests" begin
     @testset "normalize_country" begin
