@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Complete Tutorial · Emissions.jl</title><meta name="title" content="Complete Tutorial · Emissions.jl"/><meta property="og:title" content="Complete Tutorial · Emissions.jl"/><meta property="twitter:title" content="Complete Tutorial · Emissions.jl"/><meta name="description" content="Documentation for Emissions.jl."/><meta property="og:description" content="Documentation for Emissions.jl."/><meta property="twitter:description" content="Documentation for Emissions.jl."/><meta property="og:url" content="https://emissions.earthsci.dev/tutorial/"/><meta property="twitter:url" content="https://emissions.earthsci.dev/tutorial/"/><link rel="canonical" href="https://emissions.earthsci.dev/tutorial/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Emissions.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Complete Tutorial</a><ul class="internal"><li><a class="tocitem" href="#Overview"><span>Overview</span></a></li><li><a class="tocitem" href="#Synthetic-Data-Walkthrough"><span>Synthetic Data Walkthrough</span></a></li><li><a class="tocitem" href="#Processing-the-Full-NEI-Dataset"><span>Processing the Full NEI Dataset</span></a></li><li><a class="tocitem" href="#Performance-Considerations"><span>Performance Considerations</span></a></li><li><a class="tocitem" href="#Key-Functions-Reference"><span>Key Functions Reference</span></a></li></ul></li><li><a class="tocitem" href="../nei_processing/">NEI Processing</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Complete Tutorial</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Complete Tutorial</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/EarthSciML/Emissions.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/EarthSciML/Emissions.jl/blob/main/docs/src/tutorial.md#" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Complete-Tutorial"><a class="docs-heading-anchor" href="#Complete-Tutorial">Complete Tutorial</a><a id="Complete-Tutorial-1"></a><a class="docs-heading-anchor-permalink" href="#Complete-Tutorial" title="Permalink"></a></h1><p>This tutorial demonstrates the complete workflow for processing EPA National Emissions Inventory (NEI) data using Emissions.jl, from raw FF10 files to gridded, spatially-allocated outputs.</p><h2 id="Overview"><a class="docs-heading-anchor" href="#Overview">Overview</a><a id="Overview-1"></a><a class="docs-heading-anchor-permalink" href="#Overview" title="Permalink"></a></h2><p>The emissions processing workflow consists of several key steps:</p><ol><li><strong>Setup</strong>: Configuration and data paths</li><li><strong>Load</strong>: Read FF10 format emissions files</li><li><strong>Aggregate</strong>: Combine and sum emissions by location and source</li><li><strong>Filter</strong>: Keep only known pollutants and apply quality filters</li><li><strong>Spatial Setup</strong>: Initialize spatial processing components</li><li><strong>Grid Reference</strong>: Assign spatial surrogates to emissions</li><li><strong>Spatial Allocation</strong>: Generate allocation matrices from shapefiles</li><li><strong>Output</strong>: Write gridded emissions to shapefile</li></ol><p>This tutorial shows two approaches: a <strong>synthetic data example</strong> for learning and testing, and instructions for processing the <strong>full NEI dataset</strong>.</p><h2 id="Synthetic-Data-Walkthrough"><a class="docs-heading-anchor" href="#Synthetic-Data-Walkthrough">Synthetic Data Walkthrough</a><a id="Synthetic-Data-Walkthrough-1"></a><a class="docs-heading-anchor-permalink" href="#Synthetic-Data-Walkthrough" title="Permalink"></a></h2><p>The following example demonstrates the complete workflow using synthetic data that can be run without downloading large datasets.</p><pre><code class="language-julia hljs">using Emissions
+using DataFrames
+using CSV
+using Printf
+using Unitful
+
+# =============================================================================
+# Step 1: Create Synthetic Emissions Data
+# =============================================================================
+println(&quot;=== Step 1: Creating Synthetic Emissions Data ===&quot;)
+
+# Create synthetic data matching exact FF10 nonpoint format (45 columns)
+synthetic_data = DataFrame(
+    COUNTRY = [&quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;],
+    FIPS = [&quot;36001&quot;, &quot;36001&quot;, &quot;36005&quot;, &quot;36005&quot;],
+    TRIBAL_CODE = [&quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;],
+    CENSUS_TRACT = [&quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;],
+    SHAPE_ID = [&quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;],
+    SCC = [&quot;2103007000&quot;, &quot;2103007000&quot;, &quot;2103007000&quot;, &quot;2103007000&quot;],
+    EMIS_TYPE = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    POLID = [&quot;NOX&quot;, &quot;VOC&quot;, &quot;NOX&quot;, &quot;VOC&quot;],                       # Pollutant ID
+    ANN_VALUE = [150.5, 75.2, 200.1, 125.8],                   # tons/year
+    ANN_PCT_RED = [0.0, 0.0, 0.0, 0.0],
+    CONTROL_IDS = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    CONTROL_MEASURES = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    CURRENT_COST = [0.0, 0.0, 0.0, 0.0],
+    CUMULATIVE_COST = [0.0, 0.0, 0.0, 0.0],
+    PROJECTION_FACTOR = [1.0, 1.0, 1.0, 1.0],
+    REG_CODES = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    CALC_METHOD = [1, 1, 1, 1],
+    CALC_YEAR = [2019, 2019, 2019, 2019],
+    DATE_UPDATED = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    DATA_SET_ID = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;],
+    JAN_VALUE = [0.0, 0.0, 0.0, 0.0],
+    FEB_VALUE = [0.0, 0.0, 0.0, 0.0],
+    MAR_VALUE = [0.0, 0.0, 0.0, 0.0],
+    APR_VALUE = [0.0, 0.0, 0.0, 0.0],
+    MAY_VALUE = [0.0, 0.0, 0.0, 0.0],
+    JUN_VALUE = [0.0, 0.0, 0.0, 0.0],
+    JUL_VALUE = [0.0, 0.0, 0.0, 0.0],
+    AUG_VALUE = [0.0, 0.0, 0.0, 0.0],
+    SEP_VALUE = [0.0, 0.0, 0.0, 0.0],
+    OCT_VALUE = [0.0, 0.0, 0.0, 0.0],
+    NOV_VALUE = [0.0, 0.0, 0.0, 0.0],
+    DEC_VALUE = [0.0, 0.0, 0.0, 0.0],
+    JAN_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    FEB_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    MAR_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    APR_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    MAY_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    JUN_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    JUL_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    AUG_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    SEP_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    OCT_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    NOV_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    DEC_PCTRED = [0.0, 0.0, 0.0, 0.0],
+    COMMENT = [&quot;Synthetic example&quot;, &quot;Synthetic example&quot;, &quot;Synthetic example&quot;, &quot;Synthetic example&quot;]
+)
+
+println(&quot;Created synthetic emissions with $(nrow(synthetic_data)) records and $(ncol(synthetic_data)) columns&quot;)
+println(&quot;First few rows:&quot;)
+show(first(synthetic_data[!, 1:8], 4), allcols=true)  # Show first 8 columns
+
+# =============================================================================
+# Step 2: Load Emissions with FF10 Format Validation
+# =============================================================================
+println(&quot;\n\n=== Step 2: Loading Emissions with FF10 Format Validation ===&quot;)
+
+# The FF10NonPointDataFrame constructor validates structure and converts units
+ff10_data = FF10NonPointDataFrame(synthetic_data)
+processed_emis = ff10_data.df
+println(&quot;✅ Successfully loaded and validated FF10 nonpoint data&quot;)
+println(&quot;Shape: $(nrow(processed_emis)) rows × $(ncol(processed_emis)) columns&quot;)
+
+# Show the unit conversion in action
+println(&quot;\nUnit conversion examples:&quot;)
+println(&quot;Original tons/year: $(synthetic_data[1, :ANN_VALUE])&quot;)
+println(&quot;Converted to kg/s: $(processed_emis[1, :ANN_VALUE])&quot;)
+@printf &quot;Conversion factor: %.2e kg/s per ton/year\n&quot; (processed_emis[1, :ANN_VALUE] / synthetic_data[1, :ANN_VALUE])
+
+# =============================================================================
+# Step 3: Aggregating and Filtering Emissions
+# =============================================================================
+println(&quot;\n\n=== Step 3: Aggregating and Filtering Emissions ===&quot;)
+
+# Group by key fields and sum emissions (this removes duplicates)
+grouped_emis = combine(
+    groupby(processed_emis, [:POLID, :COUNTRY, :FIPS, :SCC]),
+    :ANN_VALUE =&gt; sum =&gt; :ANN_VALUE
+)
+
+println(&quot;After grouping: $(nrow(grouped_emis)) unique emission records&quot;)
+show(grouped_emis, allcols=true)
+
+# Filter to keep only known pollutants
+known_polls = filter(row -&gt; haskey(Pollutants, row.POLID), grouped_emis)
+println(&quot;\n\nKnown pollutants found: $(nrow(known_polls)) records&quot;)
+
+# Map to standard pollutant names
+known_polls[!, :POLID] = [Pollutants[p] for p in known_polls[!, :POLID]]
+println(&quot;Mapped to standard names:&quot;)
+show(known_polls, allcols=true)
+
+# =============================================================================
+# Step 4: Create Supporting Data Structures
+# =============================================================================
+println(&quot;\n\n=== Step 4: Setting Up Spatial Processing Configuration ===&quot;)
+
+# Create synthetic grid reference data
+grid_ref = DataFrame(
+    COUNTRY = [&quot;USA&quot;, &quot;USA&quot;, &quot;USA&quot;],
+    FIPS = [&quot;36001&quot;, &quot;36005&quot;, &quot;00000&quot;],  # Include fallback (00000) surrogate
+    SCC = [&quot;2103007000&quot;, &quot;2103007000&quot;, &quot;2103007000&quot;],
+    Surrogate = [100, 100, 100]  # All use surrogate code 100
+)
+
+# Create synthetic surrogate specification
+srg_spec = SurrogateSpec(
+    &quot;USA&quot;,                    # Region
+    &quot;Population&quot;,             # Name
+    100,                      # Code
+    &quot;population.shp&quot;,         # DataShapefile
+    &quot;POP2019&quot;,               # DataAttribute
+    &quot;area.shp&quot;,              # WeightShapefile
+    &quot;Area-based allocation&quot;,  # Details
+    String[],                # BackupSurrogateNames
+    [&quot;AREA&quot;],                # WeightColumns
+    [1.0],                   # WeightFactors
+    &quot;&quot;,                      # FilterFunction
+    String[],                # MergeNames
+    Float64[]                # MergeMultipliers
+)
+
+# Create synthetic configuration (in real use, these would be actual file paths)
+config = Config(
+    [&quot;/tmp/synthetic_gridref.csv&quot;],      # f_gridRef
+    &quot;/tmp/synthetic_srgspec.csv&quot;,        # SrgSpec
+    &quot;/tmp/shapefiles/&quot;,                  # SrgShapefileDirectory
+    &quot;+proj=longlat +datum=WGS84&quot;,        # InputSR
+    &quot;+proj=lcc +lat_1=33 +lat_2=45&quot;,     # OutputSR
+    &quot;/tmp/synthetic_grid.txt&quot;,           # GridFile
+    &quot;SyntheticGrid&quot;,                     # GridName
+    &quot;/tmp/counties.shp&quot;,                 # Counties
+    &quot;/tmp/output/&quot;                       # EmisShp
+)
+
+println(&quot;Grid Reference data:&quot;)
+show(grid_ref, allcols=true)
+
+println(&quot;\n\nSurrogate Specifications:&quot;)
+println(&quot;Surrogate $(srg_spec.Code): $(srg_spec.Name)&quot;)
+println(&quot;  Data: $(srg_spec.DataShapefile) [$(srg_spec.DataAttribute)]&quot;)
+println(&quot;  Weight: $(srg_spec.WeightShapefile) [$(join(srg_spec.WeightColumns, &quot;, &quot;))]&quot;)
+println(&quot;  Details: $(srg_spec.Details)&quot;)
+
+println(&quot;\n\nConfiguration:&quot;)
+println(&quot;Input projection: $(config.InputSR)&quot;)
+println(&quot;Output projection: $(config.OutputSR)&quot;)
+println(&quot;Grid name: $(config.GridName)&quot;)
+
+# =============================================================================
+# Step 5: Assign Spatial Surrogates
+# =============================================================================
+println(&quot;\n\n=== Step 5: Assigning Spatial Surrogates ===&quot;)
+
+# POLID column already matches grid reference format (no renaming needed)
+
+# Join with grid reference to assign surrogates
+emissions_with_surrogates = leftjoin(
+    known_polls,
+    grid_ref,
+    on = [:COUNTRY, :FIPS, :SCC]
+)
+
+println(&quot;Emissions with assigned surrogates:&quot;)
+show(emissions_with_surrogates, allcols=true)
+
+# Check for unmatched emissions (would need fallback surrogates in real data)
+unmatched = filter(row -&gt; ismissing(row.Surrogate), emissions_with_surrogates)
+println(&quot;\nUnmatched emissions requiring fallback surrogates: $(nrow(unmatched))&quot;)
+
+if nrow(unmatched) &gt; 0
+    println(&quot;In real processing, these would be matched against FIPS=&#39;00000&#39; records&quot;)
+end
+
+# =============================================================================
+# Step 6: Demonstrate Key Constants and Unit Conversions
+# =============================================================================
+println(&quot;\n\n=== Step 6: Key Constants and Unit Conversions ===&quot;)
+
+println(&quot;Emissions unit conversion factors:&quot;)
+@printf &quot;tons/year → kg/s: %.2e\n&quot; ustrip(tonperyear)
+@printf &quot;tons/month → kg/s: %.2e\n&quot; ustrip(tonpermonth)
+@printf &quot;feet → meters: %.4f\n&quot; ustrip(foot)
+
+println(&quot;\nTemperature conversion examples:&quot;)
+temps_f = [32.0, 68.0, 212.0]  # Freezing, room temp, boiling
+for temp_f in temps_f
+    temp_k = kelvin(temp_f)
+    @printf &quot;%.1f°F = %.2f K\n&quot; temp_f ustrip(temp_k)
+end
+
+println(&quot;\nSupported pollutants:&quot;)
+for (ff10_name, standard_name) in pairs(Pollutants)
+    println(&quot;  $ff10_name → $standard_name&quot;)
+end
+
+# =============================================================================
+# Step 7: Spatial Processing Workflow Overview
+# =============================================================================
+println(&quot;\n\n=== Step 7: Spatial Processing Workflow (Conceptual) ===&quot;)
+
+println(&quot;&quot;&quot;
+The complete spatial processing workflow would continue with:
+
+1. **Shapefile Loading**: Read population and area shapefiles
+   - generate_data_sparse_matrices() for population data
+   - generate_weight_sparse_matrices() for area weights
+   - generate_grid_sparse_matrices() for target grid
+
+2. **Surrogate Generation**:
+   - generate_countySurrogate() combines data and weights
+   - Creates normalized allocation fractions that sum to 1.0
+
+3. **Location Indexing**:
+   - GetIndex() finds grid cells for each emission location
+   - Handles partial grid cell coverage with fractions
+
+4. **Final Allocation**:
+   - recordToGrid() distributes emissions to grid cells
+   - Applies surrogate fractions and location fractions
+
+5. **Output Generation**:
+   - writeEmis() creates final gridded shapefile
+   - Includes emission amounts, grid coordinates, metadata
+&quot;&quot;&quot;)
+
+# Show what the final output structure would look like
+final_output_structure = DataFrame(
+    GridCell = [1, 1, 2, 2],
+    Pollutant = [&quot;NOX&quot;, &quot;VOC&quot;, &quot;NOX&quot;, &quot;VOC&quot;],
+    EmissionRate_kg_s = [1.2e-6, 6.1e-7, 1.6e-6, 1.0e-6],
+    SourceCount = [2, 2, 2, 2],
+    County = [&quot;36001&quot;, &quot;36001&quot;, &quot;36005&quot;, &quot;36005&quot;]
+)
+
+println(&quot;Final gridded output structure:&quot;)
+show(final_output_structure, allcols=true)
+
+println(&quot;\n✅ Synthetic workflow demonstration complete!&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">=== Step 1: Creating Synthetic Emissions Data ===
+Created synthetic emissions with 4 records and 45 columns
+First few rows:
+4×8 DataFrame
+ Row │ COUNTRY  FIPS    TRIBAL_CODE  CENSUS_TRACT  SHAPE_ID  SCC         EMIS_TYPE  POLID
+     │ String   String  String       String        String    String      String     String
+─────┼─────────────────────────────────────────────────────────────────────────────────────
+   1 │ 0        36001   0            0             0         2103007000             NOX
+   2 │ 0        36001   0            0             0         2103007000             VOC
+   3 │ 0        36005   0            0             0         2103007000             NOX
+   4 │ 0        36005   0            0             0         2103007000             VOC
+
+=== Step 2: Loading Emissions with FF10 Format Validation ===
+✅ Successfully loaded and validated FF10 nonpoint data
+Shape: 4 rows × 45 columns
+
+Unit conversion examples:
+Original tons/year: 0.004329380469939117 kg s^-1
+Converted to kg/s: 0.004329380469939117 kg s^-1
+Conversion factor: 1.00e+00 kg/s per ton/year
+
+
+=== Step 3: Aggregating and Filtering Emissions ===
+After grouping: 4 unique emission records
+4×5 DataFrame
+ Row │ POLID   COUNTRY  FIPS    SCC         ANN_VALUE
+     │ String  String   String  String      Quantity…
+─────┼─────────────────────────────────────────────────────────
+   1 │ NOX     0        36001   2103007000  0.00432938 kg s^-1
+   2 │ VOC     0        36001   2103007000  0.00216325 kg s^-1
+   3 │ NOX     0        36005   2103007000  0.00575621 kg s^-1
+   4 │ VOC     0        36005   2103007000  0.00361884 kg s^-1
+
+Known pollutants found: 4 records
+Mapped to standard names:
+4×5 DataFrame
+ Row │ POLID   COUNTRY  FIPS    SCC         ANN_VALUE
+     │ String  String   String  String      Quantity…
+─────┼─────────────────────────────────────────────────────────
+   1 │ NOX     0        36001   2103007000  0.00432938 kg s^-1
+   2 │ VOC     0        36001   2103007000  0.00216325 kg s^-1
+   3 │ NOX     0        36005   2103007000  0.00575621 kg s^-1
+   4 │ VOC     0        36005   2103007000  0.00361884 kg s^-1
+
+=== Step 4: Setting Up Spatial Processing Configuration ===
+Grid Reference data:
+3×4 DataFrame
+ Row │ COUNTRY  FIPS    SCC         Surrogate
+     │ String   String  String      Int64
+─────┼────────────────────────────────────────
+   1 │ USA      36001   2103007000        100
+   2 │ USA      36005   2103007000        100
+   3 │ USA      00000   2103007000        100
+
+Surrogate Specifications:
+Surrogate 100: Population
+  Data: population.shp [POP2019]
+  Weight: area.shp [AREA]
+  Details: Area-based allocation
+
+
+Configuration:
+Input projection: +proj=longlat +datum=WGS84
+Output projection: +proj=lcc +lat_1=33 +lat_2=45
+Grid name: SyntheticGrid
+
+
+=== Step 5: Assigning Spatial Surrogates ===
+Emissions with assigned surrogates:
+4×6 DataFrame
+ Row │ POLID   COUNTRY  FIPS    SCC         ANN_VALUE           Surrogate
+     │ String  String   String  String      Quantity…           Int64?
+─────┼────────────────────────────────────────────────────────────────────
+   1 │ NOX     0        36001   2103007000  0.00432938 kg s^-1    missing
+   2 │ VOC     0        36001   2103007000  0.00216325 kg s^-1    missing
+   3 │ NOX     0        36005   2103007000  0.00575621 kg s^-1    missing
+   4 │ VOC     0        36005   2103007000  0.00361884 kg s^-1    missing
+Unmatched emissions requiring fallback surrogates: 4
+In real processing, these would be matched against FIPS=&#39;00000&#39; records
+
+
+=== Step 6: Key Constants and Unit Conversions ===
+Emissions unit conversion factors:
+tons/year → kg/s: 2.88e-05
+tons/month → kg/s: 3.45e-04
+feet → meters: 0.3048
+
+Temperature conversion examples:
+32.0°F = 273.15 K
+68.0°F = 293.15 K
+212.0°F = 373.15 K
+
+Supported pollutants:
+  TIR__PM25-PRI → PM25
+  SO2 → SO2
+  PM25TOTAL → PM25
+  VOC_INV → VOC
+  EXH__PM25-PRI → PM25
+  BRK__PM25-PRI → PM25
+  BRK__PM2_5 → PM25
+  TIR__PM2_5 → PM25
+  PM2_5 → PM25
+  EVP__VOC → VOC
+  NH3 → NH3
+  EXH__VOC → VOC
+  NOX → NOX
+  EXH__PM2_5 → PM25
+  VOC → VOC
+  PM25-PRI → PM25
+
+
+=== Step 7: Spatial Processing Workflow (Conceptual) ===
+The complete spatial processing workflow would continue with:
+
+1. **Shapefile Loading**: Read population and area shapefiles
+   - generate_data_sparse_matrices() for population data
+   - generate_weight_sparse_matrices() for area weights
+   - generate_grid_sparse_matrices() for target grid
+
+2. **Surrogate Generation**:
+   - generate_countySurrogate() combines data and weights
+   - Creates normalized allocation fractions that sum to 1.0
+
+3. **Location Indexing**:
+   - GetIndex() finds grid cells for each emission location
+   - Handles partial grid cell coverage with fractions
+
+4. **Final Allocation**:
+   - recordToGrid() distributes emissions to grid cells
+   - Applies surrogate fractions and location fractions
+
+5. **Output Generation**:
+   - writeEmis() creates final gridded shapefile
+   - Includes emission amounts, grid coordinates, metadata
+
+Final gridded output structure:
+4×5 DataFrame
+ Row │ GridCell  Pollutant  EmissionRate_kg_s  SourceCount  County
+     │ Int64     String     Float64            Int64        String
+─────┼─────────────────────────────────────────────────────────────
+   1 │        1  NOX                   1.2e-6            2  36001
+   2 │        1  VOC                   6.1e-7            2  36001
+   3 │        2  NOX                   1.6e-6            2  36005
+   4 │        2  VOC                   1.0e-6            2  36005
+✅ Synthetic workflow demonstration complete!</code></pre><h2 id="Processing-the-Full-NEI-Dataset"><a class="docs-heading-anchor" href="#Processing-the-Full-NEI-Dataset">Processing the Full NEI Dataset</a><a id="Processing-the-Full-NEI-Dataset-1"></a><a class="docs-heading-anchor-permalink" href="#Processing-the-Full-NEI-Dataset" title="Permalink"></a></h2><p>For processing the complete EPA National Emissions Inventory, follow these steps:</p><h3 id="Step-1:-Download-NEI-Data"><a class="docs-heading-anchor" href="#Step-1:-Download-NEI-Data">Step 1: Download NEI Data</a><a id="Step-1:-Download-NEI-Data-1"></a><a class="docs-heading-anchor-permalink" href="#Step-1:-Download-NEI-Data" title="Permalink"></a></h3><pre><code class="language-julia hljs"># The full NEI dataset can be downloaded from EPA&#39;s website:
+# https://www.epa.gov/air-emissions-inventories/2019-national-emissions-inventory-nei-data
+
+# Example file structure for 2019 NEI:
+nei_base_url = &quot;https://gaftp.epa.gov/air/nei/2019/&quot;
+file_downloads = [
+    &quot;nonpoint/2019v1_nonpoint_20210121_csv.zip&quot;,
+    &quot;point/2019v1_point_20210121_csv.zip&quot;,
+    &quot;nonroad/2019v1_nonroad_20210121_csv.zip&quot;,
+    &quot;onroad/2019v1_onroad_20210121_csv.zip&quot;
+]
+
+# Download and extract files
+using HTTP, ZipFile
+for file in file_downloads
+    url = nei_base_url * file
+    local_path = joinpath(&quot;data&quot;, &quot;nei2019&quot;, basename(file))
+
+    # Download
+    println(&quot;Downloading: $url&quot;)
+    HTTP.download(url, local_path)
+
+    # Extract ZIP file
+    zip_reader = ZipFile.Reader(local_path)
+    for file_info in zip_reader.files
+        # Extract CSV files to data directory
+        if endswith(file_info.name, &quot;.csv&quot;)
+            extracted_path = joinpath(&quot;data&quot;, &quot;nei2019&quot;, file_info.name)
+            open(extracted_path, &quot;w&quot;) do io
+                write(io, read(file_info))
+            end
+            println(&quot;  Extracted: $(file_info.name)&quot;)
+        end
+    end
+    close(zip_reader)
+end</code></pre><h3 id="Step-2:-Set-Up-Real-Configuration"><a class="docs-heading-anchor" href="#Step-2:-Set-Up-Real-Configuration">Step 2: Set Up Real Configuration</a><a id="Step-2:-Set-Up-Real-Configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Step-2:-Set-Up-Real-Configuration" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Configure paths for full NEI processing
+real_config = Config(
+    # Grid reference files (multiple regions)
+    [
+        &quot;data/spatial/gridref_usa_2019.csv&quot;,
+        &quot;data/spatial/gridref_canada_2019.csv&quot;,
+        &quot;data/spatial/gridref_mexico_2019.csv&quot;
+    ],
+
+    # Surrogate specification file
+    &quot;data/spatial/surrogate_specification_2019.csv&quot;,
+
+    # Directory containing all spatial surrogate shapefiles
+    &quot;data/spatial/shapefiles/&quot;,
+
+    # Input coordinate system (geographic coordinates)
+    &quot;+proj=longlat +datum=WGS84 +no_defs&quot;,
+
+    # Output coordinate system (Lambert Conformal Conic for US modeling)
+    &quot;+proj=lcc +lat_1=33 +lat_2=45 +lat_0=40 +lon_0=-97 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs&quot;,
+
+    # Grid definition file (defines target modeling grid)
+    &quot;data/grids/inmap_conus_grid.txt&quot;,
+
+    # Grid identifier
+    &quot;InMAP_CONUS&quot;,
+
+    # County boundaries shapefile
+    &quot;data/spatial/shapefiles/tl_2019_us_county.shp&quot;,
+
+    # Output directory for gridded emissions
+    &quot;output/nei2019_gridded/&quot;
+)</code></pre><h3 id="Step-3:-Process-Full-Dataset-by-Sector"><a class="docs-heading-anchor" href="#Step-3:-Process-Full-Dataset-by-Sector">Step 3: Process Full Dataset by Sector</a><a id="Step-3:-Process-Full-Dataset-by-Sector-1"></a><a class="docs-heading-anchor-permalink" href="#Step-3:-Process-Full-Dataset-by-Sector" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Define readers for each emission sector
+readers = Dict(
+    &quot;nonpoint&quot; =&gt; (f -&gt; FF10NonPointDataFrame(CSV.read(f, DataFrame, comment=&quot;#&quot;))),
+    &quot;point&quot; =&gt; (f -&gt; FF10PointDataFrame(CSV.read(f, DataFrame, comment=&quot;#&quot;))),
+    &quot;nonroad&quot; =&gt; (f -&gt; FF10NonRoadDataFrame(CSV.read(f, DataFrame, comment=&quot;#&quot;))),
+    &quot;onroad&quot; =&gt; (f -&gt; FF10OnRoadDataFrame(CSV.read(f, DataFrame, comment=&quot;#&quot;)))
+)
+
+# Process each sector separately to manage memory
+all_emissions = DataFrame[]
+
+for (sector, reader) in readers
+    println(&quot;Processing $sector emissions...&quot;)
+
+    # Find all CSV files for this sector
+    sector_files = filter(f -&gt; contains(f, sector) &amp;&amp; endswith(f, &quot;.csv&quot;),
+                         readdir(&quot;data/nei2019/&quot;, join=true))
+
+    sector_emissions = DataFrame[]
+    for file in sector_files
+        println(&quot;  Reading: $(basename(file))&quot;)
+        try
+            ff10_data = reader(file)
+            push!(sector_emissions, ff10_data.df)
+        catch e
+            println(&quot;    Warning: Error reading $file: $e&quot;)
+        end
+    end
+
+    # Concatenate all files in this sector
+    if !isempty(sector_emissions)
+        sector_combined = vcat(sector_emissions...)
+        println(&quot;  $sector total: $(nrow(sector_combined)) records&quot;)
+        push!(all_emissions, sector_combined)
+    end
+end
+
+# Combine all sectors
+println(&quot;Combining all emission sectors...&quot;)
+combined_emissions = vcat(all_emissions...)
+println(&quot;Total emissions: $(nrow(combined_emissions)) records&quot;)</code></pre><h3 id="Step-4:-Full-Spatial-Processing"><a class="docs-heading-anchor" href="#Step-4:-Full-Spatial-Processing">Step 4: Full Spatial Processing</a><a id="Step-4:-Full-Spatial-Processing-1"></a><a class="docs-heading-anchor-permalink" href="#Step-4:-Full-Spatial-Processing" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Initialize spatial processing for the full domain
+sp, gd = setupSpatialProcessor(real_config)
+
+# Aggregate emissions by location and source characteristics
+aggregated = combine(
+    groupby(combined_emissions, [:POLID, :COUNTRY, :FIPS, :SCC, :LON, :LAT]),
+    :ANN_VALUE =&gt; sum =&gt; :ANN_VALUE,
+    :STACK_HEIGHT =&gt; mean =&gt; :STACK_HEIGHT,  # For point sources
+    :STACK_DIAMETER =&gt; mean =&gt; :STACK_DIAMETER,
+    :STACK_TEMP =&gt; mean =&gt; :STACK_TEMP,
+    :STACK_FLOW =&gt; sum =&gt; :STACK_FLOW,
+    :STACK_VELOCITY =&gt; mean =&gt; :STACK_VELOCITY
+)
+
+# Filter to known pollutants and standardize names
+known_emis = filter(row -&gt; haskey(Pollutants, row.POLID), aggregated)
+known_emis[!, :POLID] = [Pollutants[p] for p in known_emis[!, :POLID]]
+
+# Join with grid reference to assign surrogates
+emissions_with_surrogates = leftjoin(known_emis, sp.GridRef, on=[:COUNTRY, :FIPS, :SCC])
+
+# Handle fallback surrogates for unmatched emissions
+unmatched = filter(row -&gt; ismissing(row.Surrogate), emissions_with_surrogates)
+if nrow(unmatched) &gt; 0
+    # Try fallback with FIPS = &quot;00000&quot; (statewide surrogates)
+    fallback_ref = filter(row -&gt; row.FIPS == &quot;00000&quot;, sp.GridRef)
+
+    # Match unmatched emissions with fallback surrogates
+    unmatched_fallback = leftjoin(
+        select(unmatched, Not(:Surrogate)),
+        select(fallback_ref, [:COUNTRY, :SCC, :Surrogate =&gt; :FallbackSurrogate]),
+        on = [:COUNTRY, :SCC]
+    )
+    unmatched_fallback[!, :Surrogate] = unmatched_fallback[!, :FallbackSurrogate]
+    select!(unmatched_fallback, Not(:FallbackSurrogate))
+
+    # Combine matched and fallback-matched emissions
+    matched = filter(row -&gt; !ismissing(row.Surrogate), emissions_with_surrogates)
+    final_emissions = vcat(matched, unmatched_fallback)
+else
+    final_emissions = emissions_with_surrogates
+end
+
+println(&quot;Final emissions ready for spatial allocation: $(nrow(final_emissions)) records&quot;)</code></pre><h3 id="Step-5:-Generate-Full-Spatial-Allocation"><a class="docs-heading-anchor" href="#Step-5:-Generate-Full-Spatial-Allocation">Step 5: Generate Full Spatial Allocation</a><a id="Step-5:-Generate-Full-Spatial-Allocation-1"></a><a class="docs-heading-anchor-permalink" href="#Step-5:-Generate-Full-Spatial-Allocation" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Define processing domain bounds (full CONUS)
+conus_bounds = (
+    x_min = -130.0,  # Western boundary
+    x_max = -65.0,   # Eastern boundary
+    y_min = 20.0,    # Southern boundary
+    y_max = 55.0     # Northern boundary
+)
+
+resolution = 0.01  # ~1km resolution
+
+# Generate sparse matrices for all shapefiles used in surrogates
+println(&quot;Generating spatial allocation matrices...&quot;)
+
+all_sparse_data = Dict()
+all_sparse_weight = Dict()
+
+for spec in sp.SrgSpecs
+    println(&quot;Processing surrogate $(spec.Code): $(spec.Name)&quot;)
+
+    # Generate data matrices
+    if !haskey(all_sparse_data, spec.DataShapefile)
+        data_matrices = generate_data_sparse_matrices(
+            conus_bounds.x_min, conus_bounds.x_max,
+            conus_bounds.y_min, conus_bounds.y_max,
+            resolution,
+            joinpath(real_config.SrgShapefileDirectory, spec.DataShapefile),
+            spec.DataAttribute
+        )
+        all_sparse_data[spec.DataShapefile] = data_matrices
+    end
+
+    # Generate weight matrices
+    if !haskey(all_sparse_weight, spec.WeightShapefile)
+        weight_matrices = generate_weight_sparse_matrices(
+            conus_bounds.x_min, conus_bounds.x_max,
+            conus_bounds.y_min, conus_bounds.y_max,
+            resolution,
+            joinpath(real_config.SrgShapefileDirectory, spec.WeightShapefile),
+            spec.WeightColumns[1];  # Use first weight column
+            Filter = spec.FilterFunction
+        )
+        all_sparse_weight[spec.WeightShapefile] = weight_matrices
+    end
+end</code></pre><h3 id="Step-6:-Write-Final-Output"><a class="docs-heading-anchor" href="#Step-6:-Write-Final-Output">Step 6: Write Final Output</a><a id="Step-6:-Write-Final-Output-1"></a><a class="docs-heading-anchor-permalink" href="#Step-6:-Write-Final-Output" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Generate county surrogates for all combinations
+county_surrogates = Dict()
+for spec in sp.SrgSpecs
+    key = (spec.DataShapefile, spec.WeightShapefile)
+    if !haskey(county_surrogates, key)
+        county_surrogates[key] = generate_countySurrogate(
+            all_sparse_data[spec.DataShapefile],
+            all_sparse_weight[spec.WeightShapefile]
+        )
+    end
+end
+
+# For each unique emission location, create spatial index
+unique_locations = unique(select(final_emissions, [:COUNTRY, :FIPS, :LON, :LAT]))
+location_indices = Dict()
+
+for row in eachrow(unique_locations)
+    if !ismissing(row.LON) &amp;&amp; !ismissing(row.LAT)
+        # Point source - use coordinates
+        location_key = (row.COUNTRY, row.FIPS, row.LON, row.LAT)
+        location_indices[location_key] = GetIndex(row.LON, row.LAT, gd)
+    else
+        # Area source - use county polygon
+        location_key = (row.COUNTRY, row.FIPS, &quot;COUNTY&quot;)
+        county_poly = findCountyPolygon(real_config.Counties, row.FIPS)
+        if county_poly !== nothing
+            location_indices[location_key] = GetIndex(county_poly, gd)
+        end
+    end
+end
+
+# Apply spatial allocation and write output
+println(&quot;Writing final gridded emissions...&quot;)
+
+output_records = []
+for row in eachrow(final_emissions)
+    if !ismissing(row.Surrogate)
+        # Find appropriate surrogate data
+        spec = find_surrogate_by_code(sp.SrgSpecs, row.Surrogate)
+        if spec !== nothing
+            # Get location index
+            if !ismissing(row.LON) &amp;&amp; !ismissing(row.LAT)
+                location_key = (row.COUNTRY, row.FIPS, row.LON, row.LAT)
+            else
+                location_key = (row.COUNTRY, row.FIPS, &quot;COUNTY&quot;)
+            end
+
+            if haskey(location_indices, location_key)
+                index_info = location_indices[location_key]
+
+                # Apply surrogate allocation
+                surrogate_key = (spec.DataShapefile, spec.WeightShapefile)
+                if haskey(county_surrogates, surrogate_key)
+                    surrogate_data = county_surrogates[surrogate_key]
+
+                    # Distribute emissions to grid cells
+                    allocated = recordToGrid(
+                        row.ANN_VALUE,
+                        index_info,
+                        get(surrogate_data, row.FIPS, nothing)
+                    )
+
+                    # Store results for output
+                    for (cell_idx, emission_amount) in pairs(allocated.nzval)
+                        push!(output_records, (
+                            grid_cell = cell_idx,
+                            pollutant = row.POLID,
+                            emission_kg_s = emission_amount,
+                            source_fips = row.FIPS,
+                            source_scc = row.SCC
+                        ))
+                    end
+                end
+            end
+        end
+    end
+end
+
+# Convert to DataFrame and write shapefile
+output_df = DataFrame(output_records)
+writeEmis(
+    joinpath(real_config.EmisShp, &quot;nei2019_gridded_emissions.shp&quot;),
+    gd,
+    output_df,
+    real_config.OutputSR,
+    &quot;Final gridded 2019 NEI emissions&quot;
+)
+
+println(&quot;Processing complete!&quot;)
+println(&quot;Output written to: $(real_config.EmisShp)&quot;)
+println(&quot;Total gridded emission records: $(nrow(output_df))&quot;)</code></pre><h2 id="Performance-Considerations"><a class="docs-heading-anchor" href="#Performance-Considerations">Performance Considerations</a><a id="Performance-Considerations-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-Considerations" title="Permalink"></a></h2><p>For processing the full NEI dataset (~50GB total):</p><ul><li><strong>Memory</strong>: 32-64GB RAM recommended for full domain processing</li><li><strong>Storage</strong>: ~200GB for input data, intermediate files, and outputs</li><li><strong>Processing Time</strong>: 4-8 hours for complete CONUS domain at 1km resolution</li><li><strong>Parallelization</strong>: Consider geographic tiling or surrogate-based parallelization</li></ul><p>For smaller domains or testing, use geographic bounds to subset the processing area and reduce computational requirements.</p><h2 id="Key-Functions-Reference"><a class="docs-heading-anchor" href="#Key-Functions-Reference">Key Functions Reference</a><a id="Key-Functions-Reference-1"></a><a class="docs-heading-anchor-permalink" href="#Key-Functions-Reference" title="Permalink"></a></h2><h3 id="FF10-Data-Loading"><a class="docs-heading-anchor" href="#FF10-Data-Loading">FF10 Data Loading</a><a id="FF10-Data-Loading-1"></a><a class="docs-heading-anchor-permalink" href="#FF10-Data-Loading" title="Permalink"></a></h3><ul><li><code>FF10NonPointDataFrame()</code> - Area source emissions (45 columns)</li><li><code>FF10PointDataFrame()</code> - Point source emissions (77 columns)</li><li><code>FF10NonRoadDataFrame()</code> - Non-road mobile emissions (45 columns)</li><li><code>FF10OnRoadDataFrame()</code> - On-road mobile emissions (45 columns)</li></ul><h3 id="Configuration-and-Setup"><a class="docs-heading-anchor" href="#Configuration-and-Setup">Configuration and Setup</a><a id="Configuration-and-Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Configuration-and-Setup" title="Permalink"></a></h3><ul><li><code>Config()</code> - Main configuration structure</li><li><code>setupSpatialProcessor()</code> - Initialize spatial processing</li></ul><h3 id="Spatial-Allocation"><a class="docs-heading-anchor" href="#Spatial-Allocation">Spatial Allocation</a><a id="Spatial-Allocation-1"></a><a class="docs-heading-anchor-permalink" href="#Spatial-Allocation" title="Permalink"></a></h3><ul><li><code>generate_data_sparse_matrices()</code> - Load data shapefiles</li><li><code>generate_weight_sparse_matrices()</code> - Load weight shapefiles</li><li><code>generate_countySurrogate()</code> - Create allocation surrogates</li><li><code>GetIndex()</code> - Map locations to grid cells</li><li><code>recordToGrid()</code> - Distribute emissions to cells</li></ul><h3 id="Output-and-Utilities"><a class="docs-heading-anchor" href="#Output-and-Utilities">Output and Utilities</a><a id="Output-and-Utilities-1"></a><a class="docs-heading-anchor-permalink" href="#Output-and-Utilities" title="Permalink"></a></h3><ul><li><code>writeEmis()</code> - Write final gridded shapefile</li><li><code>find_surrogate_by_code()</code> - Look up surrogate specifications</li><li>Unit conversion constants: <code>tonperyear</code>, <code>tonpermonth</code>, <code>foot</code>, <code>kelvin()</code></li><li>Pollutant mapping: <code>Pollutants</code> dictionary</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../nei_processing/">NEI Processing »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Saturday 14 February 2026 20:39">Saturday 14 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
