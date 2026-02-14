@@ -99,7 +99,6 @@ function ASME(
         stackVel,
         stackDiam
     )
-    print(deltaH)
     plumeHeight = stackHeight + deltaH
     plumeLayer = findLayer(layerHeights, plumeHeight)
     return plumeLayer, plumeHeight

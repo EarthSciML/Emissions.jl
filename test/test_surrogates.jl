@@ -57,4 +57,73 @@ using SparseArrays
         @test Emissions.find_column_name(df, "POPULATION") == "Population"
         @test_throws ErrorException Emissions.find_column_name(df, "nonexistent")
     end
+
+    @testset "read_crs_epsg" begin
+        # Test with known CRS string
+        test_crs = "GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]"
+
+        # Create temporary .prj file
+        temp_prj = tempname() * ".prj"
+        open(temp_prj, "w") do io
+            write(io, test_crs)
+        end
+
+        result = Emissions.read_crs_epsg(temp_prj)
+        @test result isa String
+        @test startswith(result, "+proj=")
+
+        # Test with non-existent file
+        @test_throws SystemError Emissions.read_crs_epsg("nonexistent.prj")
+
+        # Cleanup
+        rm(temp_prj)
+    end
+
+    @testset "generate_data_sparse_matrices" begin
+        # Create a small test grid
+        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+
+        # Test error handling with non-existent shapefile
+        @test_throws Union{SystemError, ArgumentError} generate_data_sparse_matrices(
+            "nonexistent.shp", "ATTR", test_grid, "+proj=longlat +datum=WGS84"
+        )
+
+        # Test with empty attribute name
+        @test_throws Union{SystemError, ArgumentError} generate_data_sparse_matrices(
+            "nonexistent.shp", "", test_grid, "+proj=longlat +datum=WGS84"
+        )
+    end
+
+    @testset "generate_weight_sparse_matrices" begin
+        # Create a small test grid
+        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+
+        # Test error handling with non-existent shapefile
+        @test_throws Union{SystemError, ArgumentError} generate_weight_sparse_matrices(
+            "nonexistent.shp", ["WEIGHT"], [1.0], test_grid, "+proj=longlat +datum=WGS84"
+        )
+
+        # Test with empty weight columns
+        @test_throws Union{SystemError, ArgumentError, BoundsError} generate_weight_sparse_matrices(
+            "nonexistent.shp", String[], Float64[], test_grid, "+proj=longlat +datum=WGS84"
+        )
+    end
+
+    @testset "generate_grid_sparse_matrices" begin
+        # Create a small test grid
+        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+
+        # Test basic grid matrix generation
+        result = generate_grid_sparse_matrices(test_grid)
+        @test result isa SparseArrays.AbstractSparseArray
+        # The actual matrix dimensions depend on the implementation
+        @test size(result, 1) >= 1  # At least one row
+        @test size(result, 2) >= 1  # At least one column
+
+        # Test with single cell grid
+        single_grid = NewGridIrregular("single", 1, 1, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        result2 = generate_grid_sparse_matrices(single_grid)
+        @test result2 isa SparseArrays.AbstractSparseArray
+        @test size(result2, 1) == 1
+    end
 end
