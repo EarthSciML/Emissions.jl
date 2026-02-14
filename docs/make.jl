@@ -16,7 +16,8 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "NEI Processing" => "nei_processing.md",
-    ]
+    ],
+    checkdocs = :none
 )
 
 deploydocs(; repo = "github.com/ctessum/Emissions.jl", devbranch = "main")

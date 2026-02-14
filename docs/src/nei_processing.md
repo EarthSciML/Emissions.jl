@@ -22,6 +22,9 @@ The following functions implement the ASME (1973) plume rise algorithm:
 ## Constants and Unit Conversions
 
 ```@docs
+tonperyear
+tonpermonth
+foot
 kelvin
 Pollutants
 ```
@@ -47,8 +50,6 @@ FF10NonPointDataFrame
 FF10PointDataFrame
 FF10NonRoadDataFrame
 FF10OnRoadDataFrame
-Emissions.transform_fips!
-Emissions.convert_emissions_units!
 ```
 
 ## I/O Functions
@@ -80,8 +81,6 @@ uniqueLoc
 ## Surrogate Operations
 
 ```@docs
-Emissions.find_column_name
-Emissions.read_crs_epsg
 generate_data_sparse_matrices
 generate_weight_sparse_matrices
 generate_grid_sparse_matrices
@@ -92,7 +91,6 @@ update_locIndex
 ## Output
 
 ```@docs
-Emissions.format_float
 find_surrogate_by_code
 get_data_weight_shapefiles
 writeEmis

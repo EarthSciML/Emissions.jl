@@ -1,7 +1,27 @@
 export tonperyear, tonpermonth, foot, kelvin, Pollutants
 
+"""
+    tonperyear
+
+Conversion factor from tons per year to kg per second.
+1 ton = 907.185 kg, 1 year = 31,536,000 seconds.
+"""
 const tonperyear = 907.185u"kg" / 31_536_000u"s"
+
+"""
+    tonpermonth
+
+Conversion factor from tons per month to kg per second.
+1 ton = 907.185 kg, 1 month = 2,628,288 seconds (average month).
+"""
 const tonpermonth = 907.185u"kg" / 2_628_288u"s"
+
+"""
+    foot
+
+Conversion factor from feet to meters.
+1 foot = 1/3.28084 meters.
+"""
 const foot = (1 / 3.28084)u"m"
 
 """
