@@ -15,7 +15,7 @@ emis.df  # access the underlying DataFrame
 ```
 """
 function read_ff10(filepath::AbstractString, format::Symbol)
-    df = CSV.read(filepath, DataFrame; header=false, silencewarnings=true)
+    df = CSV.read(filepath, DataFrame; header=false, comment="#", silencewarnings=true)
     if format == :nonpoint
         return FF10NonPointDataFrame(df)
     elseif format == :point

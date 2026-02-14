@@ -117,6 +117,38 @@ using DataFrames, CSV, Unitful
         rm(tmpfile)
     end
 
+    @testset "read_ff10 with comments" begin
+        # Create a temp CSV with 45 columns and comment lines
+        tmpfile = tempname() * ".csv"
+        row_data = []
+        for i in 1:45
+            if i == 2
+                push!(row_data, "36001")  # FIPS
+            elseif i == 6
+                push!(row_data, "2103007000")  # SCC
+            elseif i == 9
+                push!(row_data, "100.0")  # ANN_VALUE
+            elseif i in 21:32
+                push!(row_data, "10.0")  # Monthly values
+            else
+                push!(row_data, "test")
+            end
+        end
+        open(tmpfile, "w") do io
+            println(io, "# This is a comment line")
+            println(io, "# Another comment")
+            println(io, join(row_data, ","))
+            println(io, "# Comment in the middle")
+            println(io, join(row_data, ","))
+        end
+        result = read_ff10(tmpfile, :nonpoint)
+        @test result isa FF10NonPointDataFrame
+        @test size(result.df, 1) == 2  # Only 2 data rows, comments ignored
+        @test result.df[1, :FIPS] == "36001"
+        @test result.df[2, :FIPS] == "36001"
+        rm(tmpfile)
+    end
+
     @testset "aggregate_emissions" begin
         df1 = DataFrame(
             POLID = ["NOX", "VOC"],
