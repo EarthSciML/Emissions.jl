@@ -32,6 +32,21 @@ function find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, code::Int)
 end
 
 """
+    find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, region::String, code::Int)
+
+Find a surrogate specification by its region and code number.
+Returns the matching `SurrogateSpec` or `nothing` if not found.
+"""
+function find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, region::String, code::Int)
+    for srg in srgSpecs
+        if srg.Region == region && srg.Code == code
+            return srg
+        end
+    end
+    return nothing
+end
+
+"""
     get_data_weight_shapefiles(srg::SurrogateSpec)
 
 Return a tuple of (data_shapefile, weight_shapefile) paths from a surrogate specification.

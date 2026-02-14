@@ -95,3 +95,9 @@ find_surrogate_by_code
 get_data_weight_shapefiles
 writeEmis
 ```
+
+## Pipeline Functions
+
+See the [Spatial Processing Pipeline](@ref) page for documentation on the mid-level pipeline
+functions: `read_ff10`, `normalize_country`, `read_gridref`, `aggregate_emissions`,
+`filter_known_pollutants`, `map_pollutant_names!`, `assign_surrogates`, and `build_data_weight_map`.

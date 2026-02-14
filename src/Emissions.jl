@@ -20,6 +20,7 @@ include("io.jl")
 include("spatial.jl")
 include("surrogates.jl")
 include("output.jl")
+include("pipeline.jl")
 
 # Export all public functions and types
 # Constants and unit conversions
@@ -32,7 +33,8 @@ export EmissionsDataFrame, SurrogateSpec, GridDef, SpatialProcessor, Config, Ind
 export FF10NonPointDataFrame, FF10PointDataFrame, FF10NonRoadDataFrame, FF10OnRoadDataFrame
 
 # I/O functions
-export strip_missing, getCountry, read_grid, getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
+export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
+    getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
 
 # Spatial processing
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc
@@ -42,5 +44,9 @@ export generate_data_sparse_matrices, generate_weight_sparse_matrices, generate_
 
 # Output functions
 export writeEmis, find_surrogate_by_code, get_data_weight_shapefiles
+
+# Pipeline functions
+export read_ff10, aggregate_emissions, filter_known_pollutants,
+    map_pollutant_names!, assign_surrogates, build_data_weight_map
 
 end
