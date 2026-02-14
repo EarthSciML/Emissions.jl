@@ -6,12 +6,13 @@ DocMeta.setdocmeta!(Emissions, :DocTestSetup, :(using Emissions); recursive = tr
 makedocs(;
     modules = [Emissions],
     authors = "EarthSciML authors and contributors",
-    repo = "https://github.com/earthsciml/Emissions.jl/blob/{commit}{path}#{line}",
+    repo = "https://github.com/EarthSciML/Emissions.jl/blob/{commit}{path}#{line}",
     sitename = "Emissions.jl",
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
-        canonical = "https://earthsciml.github.io/Emissions.jl",
-        assets = String[]
+        canonical = "https://emissions.earthsci.dev",
+        assets = String[],
+        repolink = "https://github.com/EarthSciML/Emissions.jl",
     ),
     pages = [
         "Home" => "index.md",
@@ -21,4 +22,4 @@ makedocs(;
     checkdocs = :none
 )
 
-deploydocs(; repo = "github.com/earthsciml/Emissions.jl", devbranch = "main")
+deploydocs(; repo = "github.com/EarthSciML/Emissions.jl.git")
