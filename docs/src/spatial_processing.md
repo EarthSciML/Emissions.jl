@@ -2,27 +2,18 @@
 
 ## Overview
 
-The Emissions.jl package provides a set of mid-level pipeline functions that bridge the gap
-between low-level building blocks (FF10 readers, surrogate matrices, spatial indexing) and
-the complete spatial processing workflow demonstrated in the
-[reference notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
+The Emissions.jl package provides a complete spatial processing pipeline for allocating
+emissions to grid cells, implementing the workflow from the
+[2019 NEI emissions processing notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
 
-These pipeline functions handle the **data preparation phase** of emissions processing:
-1. Reading multiple FF10-format emissions files
-2. Aggregating and filtering emissions records
-3. Mapping pollutant identifiers to standard group names
-4. Assigning spatial surrogates via grid reference joins with fallback logic
-5. Identifying which surrogate shapefiles are actually needed
+The pipeline consists of two layers:
 
-These functions operate on DataFrames and do not require specific file formats, so users can
-load data however they want and pass DataFrames to the pipeline.
+1. **Data Preparation**: Reading FF10 files, aggregating emissions, filtering pollutants,
+   mapping names, and assigning spatial surrogates.
+2. **Spatial Allocation**: Computing grid cell indices for emission locations, optionally
+   refining with surrogate-weighted fractions, and distributing emissions to grid cells.
 
-**Note**: This pipeline covers the initial data preparation steps. For complete spatial processing
-including matrix generation, surrogate computation, and emissions output, users should combine
-these functions with the lower-level spatial processing functions (`generate_data_sparse_matrices`,
-`generate_weight_sparse_matrices`, etc.) as shown in the examples.
-
-## Pipeline Functions
+## Data Preparation Functions
 
 ### File I/O
 
@@ -48,15 +39,45 @@ build_data_weight_map
 find_surrogate_by_code(::Vector{SurrogateSpec}, ::String, ::Int)
 ```
 
+## Spatial Allocation Functions
+
+### High-Level Workflow Functions
+
+```@docs
+location_key
+compute_grid_indices
+refine_indices_with_surrogates
+allocate_emissions_to_grid
+process_emissions_spatial
+```
+
+### Low-Level Surrogate Generation Functions
+
+The following low-level functions are used for advanced surrogate generation from shapefiles.
+For complete API documentation, see the [NEI Processing](nei_processing.md#surrogate-operations) page.
+
+- [`generate_data_sparse_matrices`](@ref) - Generate sparse matrices from data shapefiles
+- [`generate_weight_sparse_matrices`](@ref) - Generate weight matrices from surrogate shapefiles
+- [`generate_grid_sparse_matrices`](@ref) - Generate grid area matrices
+- [`generate_countySurrogate`](@ref) - Combine data and weight matrices into normalized surrogates
+- [`update_locIndex`](@ref) - Update location indices with surrogate data
+
 ## Implementation
 
-### Pipeline Workflow Example
+### Complete Workflow Example
 
-```@example pipeline
+The following example demonstrates the full spatial processing pipeline using
+synthetic data. This corresponds to the workflow in the reference notebook.
+
+```@example workflow
 using Emissions
 using DataFrames
+using SparseArrays
 
-# Create synthetic emissions data (simulating two sectors)
+# =============================================================================
+# Step 1: Create Synthetic Emissions Data
+# =============================================================================
+# Simulating two emission sectors with point source coordinates
 nonpoint_data = DataFrame(
     POLID = ["NOX", "VOC", "NOX", "SO2"],
     COUNTRY = ["USA", "USA", "USA", "USA"],
@@ -73,25 +94,34 @@ onroad_data = DataFrame(
     ANN_VALUE = [50.0, 30.0, 15.0]
 )
 
-# Step 1: Aggregate emissions from multiple sectors
+println("Nonpoint records: ", nrow(nonpoint_data))
+println("Onroad records: ", nrow(onroad_data))
+```
+
+```@example workflow
+# =============================================================================
+# Step 2: Aggregate Emissions from Multiple Sectors
+# =============================================================================
 combined = aggregate_emissions([nonpoint_data, onroad_data])
 println("Combined records: ", nrow(combined))
+first(combined, 5)
 ```
 
-```@example pipeline
-# Step 2: Filter to known pollutants only
+```@example workflow
+# =============================================================================
+# Step 3: Filter to Known Pollutants and Map Names
+# =============================================================================
 filtered = filter_known_pollutants(combined)
 println("After filtering: ", nrow(filtered))
-```
 
-```@example pipeline
-# Step 3: Map pollutant names to standard groups
 map_pollutant_names!(filtered)
 println("Unique pollutants: ", unique(filtered.POLID))
 ```
 
-```@example pipeline
-# Step 4: Assign surrogates
+```@example workflow
+# =============================================================================
+# Step 4: Assign Spatial Surrogates
+# =============================================================================
 gridref = DataFrame(
     COUNTRY = ["USA", "USA", "USA"],
     FIPS = ["36001", "36005", "00000"],
@@ -104,39 +134,92 @@ println("Surrogates assigned: ", count(!ismissing, with_surrogates.Surrogate),
     " of ", nrow(with_surrogates))
 ```
 
-```@example pipeline
-# Step 5: Build the data/weight shapefile map
-srgSpecs = [
-    SurrogateSpec("USA", "Population", 100, "/data/pop.shp", "POP",
-        "/weight/pop_w.shp", "Population surrogate",
-        String[], String[], Float64[], "", String[], Float64[]),
-    SurrogateSpec("USA", "Roads", 200, "/data/roads.shp", "ROADS",
-        "/weight/roads_w.shp", "Road network surrogate",
-        String[], String[], Float64[], "", String[], Float64[]),
-]
+```@example workflow
+# =============================================================================
+# Step 5: Create Target Grid
+# =============================================================================
+# Create a simple 4x4 grid (in real use, this would be an InMAP or CMAQ grid)
+grid = NewGridIrregular("CONUS_4x4", 4, 4, "EPSG:4326", 1.0, 1.0, -76.0, 39.0)
+println("Grid: $(grid.Nx) x $(grid.Ny) = $(grid.Nx * grid.Ny) cells")
+```
 
-shapefile_map = build_data_weight_map(with_surrogates, srgSpecs)
-for (key, labels) in shapefile_map
-    println("$(key[1]) + $(key[2]) => $(labels)")
+```@example workflow
+# =============================================================================
+# Step 6: Spatial Allocation with Surrogates
+# =============================================================================
+# Create synthetic county surrogates that distribute emissions across grid cells.
+# In real use, these are generated by generate_data_sparse_matrices(),
+# generate_weight_sparse_matrices(), and generate_countySurrogate().
+
+# County 36001 (Albany, NY): 60% in cell (1,1), 40% in cell (1,2)
+srg_36001 = sparse([1, 1], [1, 2], [0.6, 0.4], 4, 4)
+
+# County 36005 (Bronx, NY): 50% in cell (2,1), 30% in cell (2,2), 20% in cell (3,1)
+srg_36005 = sparse([2, 2, 3], [1, 2, 1], [0.5, 0.3, 0.2], 4, 4)
+
+county_surrogates = Dict("36001" => srg_36001, "36005" => srg_36005)
+
+# Run the complete spatial allocation workflow
+gridded = process_emissions_spatial(with_surrogates, grid;
+    county_surrogates=county_surrogates)
+
+println("Gridded output: $(nrow(gridded)) rows")
+gridded
+```
+
+### Step-by-Step Spatial Allocation
+
+The `process_emissions_spatial` function orchestrates three steps that can
+also be called individually for more control:
+
+```@example workflow
+# Step 6a: Compute grid indices for all unique locations
+locIndex = compute_grid_indices(with_surrogates, grid)
+println("Location indices computed: ", length(locIndex))
+for (key, idx) in locIndex
+    println("  $key: inGrid=$(idx.inGrid), cells=$(length(idx.rows))")
 end
 ```
 
-### Complete Workflow Integration
+```@example workflow
+# Step 6b: Refine area-source indices with surrogate data
+refine_indices_with_surrogates(locIndex, county_surrogates)
+println("\nAfter surrogate refinement:")
+for (key, idx) in locIndex
+    println("  $key: inGrid=$(idx.inGrid), cells=$(length(idx.rows))")
+    if idx.inGrid
+        for k in eachindex(idx.rows)
+            println("    cell($(idx.rows[k]),$(idx.cols[k])): $(round(idx.fracs[k]*100, digits=1))%")
+        end
+    end
+end
+```
 
-Here's how these pipeline functions connect to the complete spatial processing workflow:
+```@example workflow
+# Step 6c: Allocate emissions to grid cells
+gridded_manual = allocate_emissions_to_grid(with_surrogates, locIndex, grid)
+println("Manual allocation result: $(nrow(gridded_manual)) rows")
+gridded_manual
+```
 
-```@example pipeline
-# After using the pipeline functions above, continue with spatial processing:
+### Point Source Processing
 
-# Step 6: Create spatial processor configuration
-# This requires grid definitions, which would typically be loaded from files
-println("Pipeline functions prepare data for spatial processing...")
-println("Next steps would involve:")
-println("1. Loading grid definitions with read_grid() or NewGridIrregular()")
-println("2. Setting up spatial processor with NewSpatialProcessor()")
-println("3. Generating sparse matrices with generate_data_sparse_matrices()")
-println("4. Computing surrogates with generate_countySurrogate()")
-println("5. Writing output with writeEmis()")
+Point sources with coordinates are allocated directly to their containing grid cell:
+
+```@example workflow
+# Point source emissions with explicit coordinates
+point_emissions = DataFrame(
+    FIPS = ["36001", "36001"],
+    POLID = ["NOX", "VOC"],
+    SCC = ["2103007000", "2103007000"],
+    ANN_VALUE = [1.0e-3, 5.0e-4],
+    LONGITUDE = [-75.5, -75.5],
+    LATITUDE = [39.5, 39.5]
+)
+
+point_result = process_emissions_spatial(point_emissions, grid)
+println("Point source allocation:")
+point_result
 ```
 
 ## Analysis
@@ -147,10 +230,10 @@ The `assign_surrogates` function implements a two-pass matching strategy:
 1. **Direct match**: Joins emissions with grid reference on `(COUNTRY, FIPS, SCC)`
 2. **Fallback match**: For unmatched records, retries with `FIPS="00000"` (state-level default)
 
-This ensures that emissions records always get a surrogate assignment when a default is available,
-even if the specific county-level entry is missing from the grid reference file.
+This ensures that emissions records always get a surrogate assignment when a default
+is available, even if the specific county-level entry is missing from the grid reference.
 
-```@example pipeline
+```@example workflow
 # Demonstrate fallback: FIPS 36999 is not in gridref, but "00000" provides a default
 test_emissions = DataFrame(
     POLID = ["NOX", "NOX"],
@@ -171,28 +254,144 @@ println("FIPS 36999 surrogate (fallback): ", result[result.FIPS .== "36999", :Su
 println("FIPS 36999 preserved: ", result[result.FIPS .== "36999", :FIPS][1])
 ```
 
+### Emissions Conservation
+
+A key property of the spatial allocation is that total emissions are conserved.
+The surrogate fractions are normalized to sum to 1.0 for each county, ensuring
+that distributing emissions across grid cells preserves the total:
+
+```@example workflow
+# Verify conservation: total emissions in == total emissions out
+input_nox = sum(filter(r -> r.POLID == "NOX", with_surrogates).ANN_VALUE)
+output_nox = sum(gridded.NOX)
+println("Input NOX total:  ", round(input_nox, digits=4))
+println("Output NOX total: ", round(output_nox, digits=4))
+println("Conservation: ", isapprox(input_nox, output_nox, rtol=1e-10) ? "PASS" : "FAIL")
+```
+
 ### Country Code Normalization
 
-The `normalize_country` function handles the various country code formats found in different
-data sources:
+The `normalize_country` function handles the various country code formats found in
+different data sources:
 
-```@example pipeline
+```@example workflow
 codes = ["US", "0", "1", "2", "USA", "Canada"]
 for code in codes
     println("\"$code\" => \"$(normalize_country(code))\"")
 end
 ```
 
+### Advanced Surrogate Generation
+
+For more complex spatial allocation scenarios, you can generate surrogate matrices directly from shapefiles using the low-level surrogate generation functions. This example demonstrates how to create county surrogates from census and employment data:
+
+```@example workflow
+# =============================================================================
+# Step 7: Advanced Surrogate Generation from Shapefiles
+# =============================================================================
+# This demonstrates the workflow for generating surrogates when you have
+# county polygons and weight data (e.g., population, employment) shapefiles
+
+println("Advanced surrogate generation workflow:")
+println("1. Generate county polygon matrices using:")
+println("   data_matrices = generate_data_sparse_matrices(")
+println("       \"counties.shp\", \"FIPS\", grid, \"EPSG:4326\")")
+println()
+println("2. Generate weight matrices (e.g., from census blocks) using:")
+println("   weight_matrix = generate_weight_sparse_matrices(")
+println("       \"census_blocks.shp\", [\"POPULATION\"], [1.0], grid, \"EPSG:4326\")")
+println()
+println("3. Generate grid matrices for normalization using:")
+println("   grid_matrix = generate_grid_sparse_matrices(grid)")
+println()
+println("4. Combine into county-level surrogates using:")
+println("   county_surrogates = generate_countySurrogate(")
+println("       data_matrices, weight_matrix, grid_matrix)")
+println()
+
+# For demonstration, we'll show the expected data structure:
+println("Example surrogate matrix structure:")
+example_matrix = sparse([1, 1, 2], [1, 2, 1], [0.6, 0.4, 1.0], 4, 4)
+println("Matrix dimensions: ", size(example_matrix))
+println("Non-zero entries: ", nnz(example_matrix))
+println("Row sums: ", [sum(example_matrix[i, :]) for i in 1:size(example_matrix, 1)])
+```
+
+```@example workflow
+# =============================================================================
+# Step 8: Complete End-to-End Workflow with Manual Surrogate Creation
+# =============================================================================
+# This demonstrates creating surrogates programmatically without shapefiles
+# (useful for testing and when actual shapefile data is not available)
+
+println("Creating synthetic surrogate data for complete workflow demonstration:")
+
+# Simulate data matrices (county polygons)
+# In real use, these come from generate_data_sparse_matrices()
+println("1. Simulating data matrices (county coverage):")
+data_matrices = Dict{String, SparseMatrixCSC{Float64,Int}}()
+data_matrices["36001"] = sparse([1, 1, 2], [1, 2, 2], [0.8, 0.3, 0.5], 4, 4)  # Albany county
+data_matrices["36005"] = sparse([2, 3, 3], [1, 1, 2], [0.7, 0.4, 0.6], 4, 4)  # Bronx county
+println("   County 36001 covers ", nnz(data_matrices["36001"]), " grid cells")
+println("   County 36005 covers ", nnz(data_matrices["36005"]), " grid cells")
+
+# Simulate weight matrix (population distribution)
+# In real use, this comes from generate_weight_sparse_matrices()
+println("\n2. Simulating weight matrix (population distribution):")
+weight_matrix = sparse([1, 1, 2, 2, 3, 3], [1, 2, 1, 2, 1, 2],
+                      [1000.0, 800.0, 1500.0, 1200.0, 600.0, 900.0], 4, 4)
+println("   Population weight matrix has ", nnz(weight_matrix), " populated cells")
+
+# Generate grid matrix
+# In real use, this comes from generate_grid_sparse_matrices()
+println("\n3. Generating grid matrix (cell areas):")
+grid_matrix = generate_grid_sparse_matrices(grid)
+println("   Grid matrix covers ", nnz(grid_matrix), " cells")
+
+# Generate county surrogates using the implemented function
+println("\n4. Generating county surrogates:")
+county_surrogates_full = generate_countySurrogate(data_matrices, weight_matrix, grid_matrix)
+println("   Generated surrogates for ", length(county_surrogates_full), " counties")
+
+for (county, surrogate) in county_surrogates_full
+    total = sum(surrogate)
+    println("   County $county: $(nnz(surrogate)) cells, total weight = $(round(total, digits=6))")
+end
+
+# Now use these surrogates in the workflow
+println("\n5. Running spatial allocation with generated surrogates:")
+final_result = process_emissions_spatial(with_surrogates, grid;
+    county_surrogates=county_surrogates_full)
+
+println("Final gridded emissions:")
+final_result
+```
+
 ## Relationship to Reference Workflow
 
-These pipeline functions implement the **data preparation steps 1-6** from the complete
-emissions spatial processing workflow demonstrated in the
+These functions implement the complete emissions spatial processing workflow from the
 [2019 NEI emissions notebook](https://github.com/EarthSciML/Emissions.jl/blob/main/examples/2019neiEmis_3.ipynb).
 
-The complete workflow includes additional steps:
-- **Steps 7-9**: Sparse matrix generation from shapefiles (`generate_data_sparse_matrices`, `generate_weight_sparse_matrices`, `generate_grid_sparse_matrices`)
-- **Steps 10-11**: Surrogate computation and location index refinement (`generate_countySurrogate`, `update_locIndex`)
-- **Step 12**: Emissions output to shapefiles (`writeEmis`)
+| Notebook Step | Function | Notes |
+|:---|:---|:---|
+| Read FF10 files | [`read_ff10`](@ref) | ✓ Complete |
+| Concatenate and aggregate | [`aggregate_emissions`](@ref) | ✓ Complete |
+| Filter pollutants | [`filter_known_pollutants`](@ref) | ✓ Complete |
+| Map pollutant names | [`map_pollutant_names!`](@ref) | ✓ Complete |
+| Assign surrogates via grid ref | [`assign_surrogates`](@ref) | ✓ Complete |
+| Build shapefile map | [`build_data_weight_map`](@ref) | ✓ Complete |
+| Compute grid indices | [`compute_grid_indices`](@ref) | ✓ Complete |
+| Generate sparse matrices | [`generate_data_sparse_matrices`](@ref), [`generate_weight_sparse_matrices`](@ref), [`generate_grid_sparse_matrices`](@ref) | ✓ Complete (uses GridDef instead of explicit bounds) |
+| Compute county surrogates | [`generate_countySurrogate`](@ref) | ✓ Complete |
+| Refine with surrogates | [`refine_indices_with_surrogates`](@ref) | ✓ Complete |
+| Allocate to grid | [`allocate_emissions_to_grid`](@ref) | ✓ Complete |
+| Complete workflow | [`process_emissions_spatial`](@ref) | ✓ Complete |
+| Write output | [`writeEmis`](@ref) | ⚠ Simplified API, outputs DataFrame instead of shapefile |
 
-These additional functions are available in Emissions.jl but operate at a lower level,
-requiring more detailed configuration of grid definitions and spatial processors.
+**Notes on Implementation Differences:**
+
+- **Sparse matrix functions**: The implementation uses `GridDef` objects instead of explicit bounds/resolution parameters for better type safety and consistency with the rest of the package.
+- **Weight matrix generation**: The implementation accepts pre-processed weight columns and factors instead of dynamic filter functions, providing a more predictable API.
+- **Output format**: The `writeEmis` function outputs structured DataFrames suitable for further processing, rather than directly writing shapefiles.
+
+These differences make the implementation more composable and testable while maintaining full compatibility with the workflow described in the reference notebook. The core spatial processing workflow is complete and functional.
