@@ -20,6 +20,12 @@ This tutorial shows two approaches: a **synthetic data example** for learning an
 
 The following example demonstrates the complete workflow using synthetic data that can be run without downloading large datasets.
 
+### Step 1: Create Synthetic Emissions Data
+
+The first step is to create (or load) emissions data in the FF10 format used by the EPA.
+FF10 nonpoint files have 45 columns including location identifiers (`FIPS` county codes),
+source classification codes (`SCC`), pollutant IDs, and annual emission values in tons/year.
+
 ```@example complete_workflow
 using Emissions
 using DataFrames
@@ -27,12 +33,6 @@ using CSV
 using Printf
 using Unitful
 
-# =============================================================================
-# Step 1: Create Synthetic Emissions Data
-# =============================================================================
-println("=== Step 1: Creating Synthetic Emissions Data ===")
-
-# Create synthetic data matching exact FF10 nonpoint format (45 columns)
 synthetic_data = DataFrame(
     COUNTRY = ["0", "0", "0", "0"],
     FIPS = ["36001", "36001", "36005", "36005"],
@@ -41,8 +41,8 @@ synthetic_data = DataFrame(
     SHAPE_ID = ["0", "0", "0", "0"],
     SCC = ["2103007000", "2103007000", "2103007000", "2103007000"],
     EMIS_TYPE = ["", "", "", ""],
-    POLID = ["NOX", "VOC", "NOX", "VOC"],                       # Pollutant ID
-    ANN_VALUE = [150.5, 75.2, 200.1, 125.8],                   # tons/year
+    POLID = ["NOX", "VOC", "NOX", "VOC"],
+    ANN_VALUE = [150.5, 75.2, 200.1, 125.8],  # tons/year
     ANN_PCT_RED = [0.0, 0.0, 0.0, 0.0],
     CONTROL_IDS = ["", "", "", ""],
     CONTROL_MEASURES = ["", "", "", ""],
@@ -81,64 +81,68 @@ synthetic_data = DataFrame(
     COMMENT = ["Synthetic example", "Synthetic example", "Synthetic example", "Synthetic example"]
 )
 
-println("Created synthetic emissions with $(nrow(synthetic_data)) records and $(ncol(synthetic_data)) columns")
-println("First few rows:")
-show(first(synthetic_data[!, 1:8], 4), allcols=true)  # Show first 8 columns
+first(synthetic_data[!, [:FIPS, :SCC, :POLID, :ANN_VALUE]], 4)
+```
 
-# =============================================================================
-# Step 2: Load Emissions with FF10 Format Validation
-# =============================================================================
-println("\n\n=== Step 2: Loading Emissions with FF10 Format Validation ===")
+We have 4 records: NOX and VOC emissions from two New York counties (Albany=36001, Bronx=36005), all from the same source category (SCC 2103007000, residential heating).
 
-# The FF10NonPointDataFrame constructor validates structure and converts units
+### Step 2: Load Emissions with FF10 Format Validation
+
+The `FF10NonPointDataFrame` constructor validates the data structure and automatically
+converts emission values from tons/year to kg/s (SI units):
+
+```@example complete_workflow
 ff10_data = FF10NonPointDataFrame(synthetic_data)
 processed_emis = ff10_data.df
-println("✅ Successfully loaded and validated FF10 nonpoint data")
-println("Shape: $(nrow(processed_emis)) rows × $(ncol(processed_emis)) columns")
 
-# Show the unit conversion in action
-println("\nUnit conversion examples:")
-println("Original tons/year: $(synthetic_data[1, :ANN_VALUE])")
-println("Converted to kg/s: $(processed_emis[1, :ANN_VALUE])")
-@printf "Conversion factor: %.2e kg/s per ton/year\n" (processed_emis[1, :ANN_VALUE] / synthetic_data[1, :ANN_VALUE])
+DataFrame(
+    Original_tons_yr = synthetic_data.ANN_VALUE,
+    Converted_kg_s = processed_emis.ANN_VALUE,
+    Ratio = processed_emis.ANN_VALUE ./ synthetic_data.ANN_VALUE
+)
+```
 
-# =============================================================================
-# Step 3: Aggregating and Filtering Emissions
-# =============================================================================
-println("\n\n=== Step 3: Aggregating and Filtering Emissions ===")
+The conversion factor is consistent across all records, as expected for a simple unit conversion from tons/year to kg/s.
 
-# Group by key fields and sum emissions (this removes duplicates)
+### Step 3: Aggregate and Filter Emissions
+
+Next we group emissions by key fields and sum duplicate records, then filter to keep only
+known pollutants and map them to standardized names:
+
+```@example complete_workflow
 grouped_emis = combine(
     groupby(processed_emis, [:POLID, :COUNTRY, :FIPS, :SCC]),
     :ANN_VALUE => sum => :ANN_VALUE
 )
 
-println("After grouping: $(nrow(grouped_emis)) unique emission records")
-show(grouped_emis, allcols=true)
-
-# Filter to keep only known pollutants
 known_polls = filter(row -> haskey(Pollutants, row.POLID), grouped_emis)
-println("\n\nKnown pollutants found: $(nrow(known_polls)) records")
-
-# Map to standard pollutant names
 known_polls[!, :POLID] = [Pollutants[p] for p in known_polls[!, :POLID]]
-println("Mapped to standard names:")
-show(known_polls, allcols=true)
 
-# =============================================================================
-# Step 4: Create Supporting Data Structures
-# =============================================================================
-println("\n\n=== Step 4: Setting Up Spatial Processing Configuration ===")
+known_polls
+```
 
-# Create synthetic grid reference data
+The `Pollutants` dictionary maps FF10 pollutant codes (e.g., `"NOX"`, `"VOC"`) to
+standardized names used downstream.
+
+### Step 4: Set Up Spatial Processing Configuration
+
+Before we can assign emissions to grid cells, we need supporting data structures: a
+grid reference table that maps each `(COUNTRY, FIPS, SCC)` combination to a spatial
+surrogate code, a surrogate specification describing how to spatially distribute emissions,
+and a configuration object with file paths:
+
+```@example complete_workflow
 grid_ref = DataFrame(
     COUNTRY = ["USA", "USA", "USA"],
-    FIPS = ["36001", "36005", "00000"],  # Include fallback (00000) surrogate
+    FIPS = ["36001", "36005", "00000"],  # "00000" is a fallback surrogate
     SCC = ["2103007000", "2103007000", "2103007000"],
-    Surrogate = [100, 100, 100]  # All use surrogate code 100
+    Surrogate = [100, 100, 100]
 )
 
-# Create synthetic surrogate specification
+grid_ref
+```
+
+```@example complete_workflow
 srg_spec = SurrogateSpec(
     "USA",                    # Region
     "Population",             # Name
@@ -155,7 +159,12 @@ srg_spec = SurrogateSpec(
     Float64[]                # MergeMultipliers
 )
 
-# Create synthetic configuration (in real use, these would be actual file paths)
+println("Surrogate $(srg_spec.Code): $(srg_spec.Name)")
+println("  Data shapefile: $(srg_spec.DataShapefile) [$(srg_spec.DataAttribute)]")
+println("  Weight shapefile: $(srg_spec.WeightShapefile) [$(join(srg_spec.WeightColumns, ", "))]")
+```
+
+```@example complete_workflow
 config = Config(
     ["/tmp/synthetic_gridref.csv"],      # f_gridRef
     "/tmp/synthetic_srgspec.csv",        # SrgSpec
@@ -168,111 +177,96 @@ config = Config(
     "/tmp/output/"                       # EmisShp
 )
 
-println("Grid Reference data:")
-show(grid_ref, allcols=true)
-
-println("\n\nSurrogate Specifications:")
-println("Surrogate $(srg_spec.Code): $(srg_spec.Name)")
-println("  Data: $(srg_spec.DataShapefile) [$(srg_spec.DataAttribute)]")
-println("  Weight: $(srg_spec.WeightShapefile) [$(join(srg_spec.WeightColumns, ", "))]")
-println("  Details: $(srg_spec.Details)")
-
-println("\n\nConfiguration:")
+println("Grid name: $(config.GridName)")
 println("Input projection: $(config.InputSR)")
 println("Output projection: $(config.OutputSR)")
-println("Grid name: $(config.GridName)")
+```
 
-# =============================================================================
-# Step 5: Assign Spatial Surrogates
-# =============================================================================
-println("\n\n=== Step 5: Assigning Spatial Surrogates ===")
+### Step 5: Assign Spatial Surrogates
 
-# POLID column already matches grid reference format (no renaming needed)
+We join the emissions data with the grid reference to assign each record a spatial
+surrogate code. The surrogate determines how emissions from a county are distributed
+across grid cells (e.g., proportional to population):
 
-# Join with grid reference to assign surrogates
+```@example complete_workflow
 emissions_with_surrogates = leftjoin(
     known_polls,
     grid_ref,
     on = [:COUNTRY, :FIPS, :SCC]
 )
 
-println("Emissions with assigned surrogates:")
-show(emissions_with_surrogates, allcols=true)
+emissions_with_surrogates
+```
 
-# Check for unmatched emissions (would need fallback surrogates in real data)
+Any rows with `missing` in the `Surrogate` column would need fallback handling. In real
+processing, these would be matched against `FIPS="00000"` records which provide state-level
+default surrogates.
+
+```@example complete_workflow
 unmatched = filter(row -> ismissing(row.Surrogate), emissions_with_surrogates)
-println("\nUnmatched emissions requiring fallback surrogates: $(nrow(unmatched))")
+println("Unmatched emissions requiring fallback: $(nrow(unmatched))")
+```
 
-if nrow(unmatched) > 0
-    println("In real processing, these would be matched against FIPS='00000' records")
-end
+### Step 6: Key Constants and Unit Conversions
 
-# =============================================================================
-# Step 6: Demonstrate Key Constants and Unit Conversions
-# =============================================================================
-println("\n\n=== Step 6: Key Constants and Unit Conversions ===")
+Emissions.jl provides built-in unit conversion constants and a temperature conversion
+function used throughout the processing pipeline:
 
-println("Emissions unit conversion factors:")
-@printf "tons/year → kg/s: %.2e\n" ustrip(tonperyear)
-@printf "tons/month → kg/s: %.2e\n" ustrip(tonpermonth)
-@printf "feet → meters: %.4f\n" ustrip(foot)
+```@example complete_workflow
+DataFrame(
+    Conversion = ["tons/year to kg/s", "tons/month to kg/s", "feet to meters"],
+    Factor = [ustrip(tonperyear), ustrip(tonpermonth), ustrip(foot)]
+)
+```
 
-println("\nTemperature conversion examples:")
-temps_f = [32.0, 68.0, 212.0]  # Freezing, room temp, boiling
-for temp_f in temps_f
-    temp_k = kelvin(temp_f)
-    @printf "%.1f°F = %.2f K\n" temp_f ustrip(temp_k)
-end
+```@example complete_workflow
+temps_f = [32.0, 68.0, 212.0]
+DataFrame(
+    Fahrenheit = temps_f,
+    Kelvin = [ustrip(kelvin(t)) for t in temps_f],
+    Description = ["Freezing point", "Room temperature", "Boiling point"]
+)
+```
 
-println("\nSupported pollutants:")
-for (ff10_name, standard_name) in pairs(Pollutants)
-    println("  $ff10_name → $standard_name")
-end
+The `Pollutants` dictionary maps all supported FF10 pollutant codes to their standardized names:
 
-# =============================================================================
-# Step 7: Spatial Processing Workflow Overview
-# =============================================================================
-println("\n\n=== Step 7: Spatial Processing Workflow (Conceptual) ===")
+```@example complete_workflow
+DataFrame(
+    FF10_Name = collect(keys(Pollutants)),
+    Standard_Name = collect(values(Pollutants))
+)
+```
 
-println("""
-The complete spatial processing workflow would continue with:
+### Step 7: Spatial Processing Overview
 
-1. **Shapefile Loading**: Read population and area shapefiles
-   - generate_data_sparse_matrices() for population data
-   - generate_weight_sparse_matrices() for area weights
-   - generate_grid_sparse_matrices() for target grid
+After surrogate assignment, the remaining spatial processing steps distribute emissions
+to grid cells using spatial surrogate data derived from shapefiles. Here is a summary of
+the workflow and its key functions:
 
-2. **Surrogate Generation**:
-   - generate_countySurrogate() combines data and weights
-   - Creates normalized allocation fractions that sum to 1.0
+| Step | Function | Description |
+|:-----|:---------|:------------|
+| Load shapefiles | `generate_data_sparse_matrices()` | Read population/area data |
+| Weight shapefiles | `generate_weight_sparse_matrices()` | Read surrogate weights |
+| Grid matrices | `generate_grid_sparse_matrices()` | Create target grid coverage |
+| Surrogate generation | `generate_countySurrogate()` | Compute normalized allocation fractions |
+| Location indexing | `GetIndex()` | Find grid cells for each emission location |
+| Final allocation | `recordToGrid()` | Distribute emissions to cells |
+| Output | `writeEmis()` | Write final gridded emissions |
 
-3. **Location Indexing**:
-   - GetIndex() finds grid cells for each emission location
-   - Handles partial grid cell coverage with fractions
+An example of what the final gridded output looks like:
 
-4. **Final Allocation**:
-   - recordToGrid() distributes emissions to grid cells
-   - Applies surrogate fractions and location fractions
-
-5. **Output Generation**:
-   - writeEmis() creates final gridded shapefile
-   - Includes emission amounts, grid coordinates, metadata
-""")
-
-# Show what the final output structure would look like
-final_output_structure = DataFrame(
+```@example complete_workflow
+DataFrame(
     GridCell = [1, 1, 2, 2],
     Pollutant = ["NOX", "VOC", "NOX", "VOC"],
     EmissionRate_kg_s = [1.2e-6, 6.1e-7, 1.6e-6, 1.0e-6],
     SourceCount = [2, 2, 2, 2],
     County = ["36001", "36001", "36005", "36005"]
 )
-
-println("Final gridded output structure:")
-show(final_output_structure, allcols=true)
-
-println("\n✅ Synthetic workflow demonstration complete!")
 ```
+
+For a fully executable example of spatial allocation with synthetic surrogates, see the
+[Spatial Processing Pipeline](@ref) page.
 
 ## Processing the Full NEI Dataset
 
