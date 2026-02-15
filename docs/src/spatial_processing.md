@@ -41,6 +41,8 @@ find_surrogate_by_code(::Vector{SurrogateSpec}, ::String, ::Int)
 
 ## Spatial Allocation Functions
 
+### High-Level Workflow Functions
+
 ```@docs
 location_key
 compute_grid_indices
@@ -48,6 +50,17 @@ refine_indices_with_surrogates
 allocate_emissions_to_grid
 process_emissions_spatial
 ```
+
+### Low-Level Surrogate Generation Functions
+
+The following low-level functions are used for advanced surrogate generation from shapefiles.
+For complete API documentation, see the [NEI Processing](nei_processing.md#surrogate-operations) page.
+
+- [`generate_data_sparse_matrices`](@ref) - Generate sparse matrices from data shapefiles
+- [`generate_weight_sparse_matrices`](@ref) - Generate weight matrices from surrogate shapefiles
+- [`generate_grid_sparse_matrices`](@ref) - Generate grid area matrices
+- [`generate_countySurrogate`](@ref) - Combine data and weight matrices into normalized surrogates
+- [`update_locIndex`](@ref) - Update location indices with surrogate data
 
 ## Implementation
 
@@ -279,25 +292,22 @@ For more complex spatial allocation scenarios, you can generate surrogate matric
 # This demonstrates the workflow for generating surrogates when you have
 # county polygons and weight data (e.g., population, employment) shapefiles
 
-# In a real application, you would call these functions:
-#
-# 1. Generate county polygon matrices
-# data_matrices = generate_data_sparse_matrices(
-#     "counties.shp", "FIPS", grid, "EPSG:4326"
-# )
-#
-# 2. Generate weight matrices (e.g., from census blocks)
-# weight_matrices = generate_weight_sparse_matrices(
-#     "census_blocks.shp", ["POPULATION"], [1.0], grid, "EPSG:4326"
-# )
-#
-# 3. Generate grid matrices for normalization
-# grid_matrices = generate_grid_sparse_matrices(grid)
-#
-# 4. Combine into county-level surrogates
-# county_surrogates = generate_countySurrogate(
-#     data_matrices, weight_matrices, grid_matrices
-# )
+println("Advanced surrogate generation workflow:")
+println("1. Generate county polygon matrices using:")
+println("   data_matrices = generate_data_sparse_matrices(")
+println("       \"counties.shp\", \"FIPS\", grid, \"EPSG:4326\")")
+println()
+println("2. Generate weight matrices (e.g., from census blocks) using:")
+println("   weight_matrix = generate_weight_sparse_matrices(")
+println("       \"census_blocks.shp\", [\"POPULATION\"], [1.0], grid, \"EPSG:4326\")")
+println()
+println("3. Generate grid matrices for normalization using:")
+println("   grid_matrix = generate_grid_sparse_matrices(grid)")
+println()
+println("4. Combine into county-level surrogates using:")
+println("   county_surrogates = generate_countySurrogate(")
+println("       data_matrices, weight_matrix, grid_matrix)")
+println()
 
 # For demonstration, we'll show the expected data structure:
 println("Example surrogate matrix structure:")
@@ -309,34 +319,52 @@ println("Row sums: ", [sum(example_matrix[i, :]) for i in 1:size(example_matrix,
 
 ```@example workflow
 # =============================================================================
-# Step 8: Demonstrating Data Weight Mapping
+# Step 8: Complete End-to-End Workflow with Manual Surrogate Creation
 # =============================================================================
-# The build_data_weight_map function identifies which shapefiles are needed
-# for the surrogate generation process
+# This demonstrates creating surrogates programmatically without shapefiles
+# (useful for testing and when actual shapefile data is not available)
 
-# Example surrogate specifications (normally read from SMOKE surrogate files)
-# SurrogateSpec constructor: Region, Name, Code, DataShapefile, DataAttribute,
-# WeightShapefile, Details, BackupSurrogateNames, WeightColumns, WeightFactors,
-# FilterFunction, MergeNames, MergeMultipliers
-surrogate_specs = [
-    SurrogateSpec("USA", "Population", 100, "counties.shp", "FIPS",
-                  "census.shp", "Population surrogate", String[],
-                  ["POP2020"], [1.0], "", String[], Float64[]),
-    SurrogateSpec("USA", "Employment", 200, "counties.shp", "FIPS",
-                  "employment.shp", "Employment surrogate", String[],
-                  ["JOBS"], [1.0], "", String[], Float64[])
-]
+println("Creating synthetic surrogate data for complete workflow demonstration:")
 
-# In practice, you would use:
-# data_weight_map = build_data_weight_map(emissions_with_surrogates, surrogate_specs)
-# This returns a mapping of which data and weight shapefiles are needed
+# Simulate data matrices (county polygons)
+# In real use, these come from generate_data_sparse_matrices()
+println("1. Simulating data matrices (county coverage):")
+data_matrices = Dict{String, SparseMatrixCSC{Float64,Int}}()
+data_matrices["36001"] = sparse([1, 1, 2], [1, 2, 2], [0.8, 0.3, 0.5], 4, 4)  # Albany county
+data_matrices["36005"] = sparse([2, 3, 3], [1, 1, 2], [0.7, 0.4, 0.6], 4, 4)  # Bronx county
+println("   County 36001 covers ", nnz(data_matrices["36001"]), " grid cells")
+println("   County 36005 covers ", nnz(data_matrices["36005"]), " grid cells")
 
-println("Surrogate specifications loaded: ", length(surrogate_specs))
-for spec in surrogate_specs
-    println("  Surrogate $(spec.Code): $(spec.Name)")
-    println("    Data: $(spec.DataShapefile) ($(spec.DataAttribute))")
-    println("    Weight: $(spec.WeightShapefile) ($(spec.WeightColumns))")
+# Simulate weight matrix (population distribution)
+# In real use, this comes from generate_weight_sparse_matrices()
+println("\n2. Simulating weight matrix (population distribution):")
+weight_matrix = sparse([1, 1, 2, 2, 3, 3], [1, 2, 1, 2, 1, 2],
+                      [1000.0, 800.0, 1500.0, 1200.0, 600.0, 900.0], 4, 4)
+println("   Population weight matrix has ", nnz(weight_matrix), " populated cells")
+
+# Generate grid matrix
+# In real use, this comes from generate_grid_sparse_matrices()
+println("\n3. Generating grid matrix (cell areas):")
+grid_matrix = generate_grid_sparse_matrices(grid)
+println("   Grid matrix covers ", nnz(grid_matrix), " cells")
+
+# Generate county surrogates using the implemented function
+println("\n4. Generating county surrogates:")
+county_surrogates_full = generate_countySurrogate(data_matrices, weight_matrix, grid_matrix)
+println("   Generated surrogates for ", length(county_surrogates_full), " counties")
+
+for (county, surrogate) in county_surrogates_full
+    total = sum(surrogate)
+    println("   County $county: $(nnz(surrogate)) cells, total weight = $(round(total, digits=6))")
 end
+
+# Now use these surrogates in the workflow
+println("\n5. Running spatial allocation with generated surrogates:")
+final_result = process_emissions_spatial(with_surrogates, grid;
+    county_surrogates=county_surrogates_full)
+
+println("Final gridded emissions:")
+final_result
 ```
 
 ## Relationship to Reference Workflow
@@ -353,7 +381,7 @@ These functions implement the complete emissions spatial processing workflow fro
 | Assign surrogates via grid ref | [`assign_surrogates`](@ref) | ✓ Complete |
 | Build shapefile map | [`build_data_weight_map`](@ref) | ✓ Complete |
 | Compute grid indices | [`compute_grid_indices`](@ref) | ✓ Complete |
-| Generate sparse matrices | [`generate_data_sparse_matrices`](@ref), [`generate_weight_sparse_matrices`](@ref), [`generate_grid_sparse_matrices`](@ref) | ⚠ Function signatures differ from notebook |
+| Generate sparse matrices | [`generate_data_sparse_matrices`](@ref), [`generate_weight_sparse_matrices`](@ref), [`generate_grid_sparse_matrices`](@ref) | ✓ Complete (uses GridDef instead of explicit bounds) |
 | Compute county surrogates | [`generate_countySurrogate`](@ref) | ✓ Complete |
 | Refine with surrogates | [`refine_indices_with_surrogates`](@ref) | ✓ Complete |
 | Allocate to grid | [`allocate_emissions_to_grid`](@ref) | ✓ Complete |
@@ -366,4 +394,4 @@ These functions implement the complete emissions spatial processing workflow fro
 - **Weight matrix generation**: The implementation accepts pre-processed weight columns and factors instead of dynamic filter functions, providing a more predictable API.
 - **Output format**: The `writeEmis` function outputs structured DataFrames suitable for further processing, rather than directly writing shapefiles.
 
-These differences make the implementation more composable and testable while maintaining full compatibility with the workflow described in the reference notebook.
+These differences make the implementation more composable and testable while maintaining full compatibility with the workflow described in the reference notebook. The core spatial processing workflow is complete and functional.
