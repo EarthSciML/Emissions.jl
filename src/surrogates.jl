@@ -1,5 +1,6 @@
 export generate_data_sparse_matrices, generate_weight_sparse_matrices,
-    generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex
+    generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex,
+    generate_data_sparse_matrices_cr, generate_weight_sparse_matrices_cr
 
 """
     find_column_name(df::DataFrame, name::AbstractString)
@@ -199,4 +200,126 @@ function update_locIndex(
     idx = IndexInfo(Int[], Int[], Float64[], false, false)
     locIndex[fips] = idx
     return idx
+end
+
+"""
+    generate_data_sparse_matrices_cr(shapefile_path, attribute, grid, inputSR)
+
+Generate data sparse matrices using ConservativeRegridding.jl for efficient
+area-overlap computation via spatial indexing.
+
+Same interface as [`generate_data_sparse_matrices`](@ref), but uses
+precomputed intersection area matrices for better performance with large grids.
+"""
+function generate_data_sparse_matrices_cr(
+        shapefile_path::AbstractString,
+        attribute::AbstractString, grid::GridDef, inputSR::String
+    )
+    df = GeoDataFrames.read(shapefile_path)
+    col = find_column_name(df, attribute)
+
+    # Group geometries by attribute value
+    groups = Dict{String, Vector{Int}}()
+    geoms = []
+    for (i, row) in enumerate(eachrow(df))
+        key = string(row[Symbol(col)])
+        push!(geoms, row.geometry)
+        if !haskey(groups, key)
+            groups[key] = Int[]
+        end
+        push!(groups[key], i)
+    end
+
+    if isempty(geoms)
+        return Dict{String, SparseMatrixCSC{Float64, Int}}()
+    end
+
+    # Build regridder: grid cells (dst) × source polygons (src)
+    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
+    src_verts = [_to_vertex_ring(g) for g in geoms]
+    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
+    areas = regridder.intersections  # dst_cells × src_polygons
+
+    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
+    ncells = grid.Ny * grid.Nx
+
+    for (key, src_indices) in groups
+        mat = spzeros(grid.Ny, grid.Nx)
+        for src_idx in src_indices
+            for cell_idx in 1:ncells
+                a = areas[cell_idx, src_idx]
+                if a > 0.0
+                    j = (cell_idx - 1) ÷ grid.Nx + 1
+                    i = (cell_idx - 1) % grid.Nx + 1
+                    mat[j, i] += a
+                end
+            end
+        end
+        result[key] = mat
+    end
+
+    return result
+end
+
+"""
+    generate_weight_sparse_matrices_cr(shapefile_path, weight_columns, weight_factors, grid, inputSR)
+
+Generate weight sparse matrices using ConservativeRegridding.jl for efficient
+area-overlap computation.
+
+Same interface as [`generate_weight_sparse_matrices`](@ref), but uses
+precomputed intersection area matrices for better performance.
+"""
+function generate_weight_sparse_matrices_cr(
+        shapefile_path::AbstractString,
+        weight_columns::Vector{String}, weight_factors::Vector{Float64},
+        grid::GridDef, inputSR::String
+    )
+    df = GeoDataFrames.read(shapefile_path)
+
+    # Compute weights per source polygon
+    n_src = nrow(df)
+    weights = zeros(Float64, n_src)
+    geoms = []
+
+    for (i, row) in enumerate(eachrow(df))
+        w = 0.0
+        for (col, factor) in zip(weight_columns, weight_factors)
+            actual_col = find_column_name(df, col)
+            val = row[Symbol(actual_col)]
+            if !ismissing(val) && val isa Number
+                w += val * factor
+            end
+        end
+        weights[i] = w
+        push!(geoms, row.geometry)
+    end
+
+    if isempty(geoms)
+        return spzeros(grid.Ny, grid.Nx)
+    end
+
+    # Build regridder
+    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
+    src_verts = [_to_vertex_ring(g) for g in geoms]
+    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
+    areas = regridder.intersections  # dst_cells × src_polygons
+
+    result = spzeros(grid.Ny, grid.Nx)
+    ncells = grid.Ny * grid.Nx
+
+    for src_idx in 1:n_src
+        w = weights[src_idx]
+        w == 0.0 && continue
+        for cell_idx in 1:ncells
+            a = areas[cell_idx, src_idx]
+            if a > 0.0
+                j = (cell_idx - 1) ÷ grid.Nx + 1
+                i = (cell_idx - 1) % grid.Nx + 1
+                result[j, i] += w * a
+            end
+        end
+    end
+
+    return result
 end

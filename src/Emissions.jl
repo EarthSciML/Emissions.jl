@@ -3,6 +3,7 @@ export g,
     ErrAboveModelTop, findLayer, calcDeltaH, ASME, calcDeltaHPrecomputed, ASMEPrecomputed
 
 using CSV
+import ConservativeRegridding
 using DataFrames
 using Dates
 import GeoDataFrames
@@ -21,6 +22,11 @@ include("io.jl")
 include("spatial.jl")
 include("surrogates.jl")
 include("output.jl")
+include("speciation.jl")
+include("controls.jl")
+include("elevpoint.jl")
+include("laypoint.jl")
+include("biogenic.jl")
 include("pipeline.jl")
 include("workflow.jl")
 include("temporal.jl")
@@ -43,11 +49,13 @@ export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
 # Spatial processing
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex,
     recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
-    cell_bounds, cell_polygon, cell_area
+    cell_bounds, cell_polygon, cell_area,
+    build_regridder, grid_polygons
 
 # Surrogate operations
 export generate_data_sparse_matrices, generate_weight_sparse_matrices,
-    generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex
+    generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex,
+    generate_data_sparse_matrices_cr, generate_weight_sparse_matrices_cr
 
 # Output functions
 export writeEmis, find_surrogate_by_code, get_data_weight_shapefiles
@@ -66,5 +74,23 @@ export read_temporal_profiles, read_temporal_xref, temporal_allocate
 
 # Merge
 export merge_emissions, merge_categories
+
+# Speciation
+export read_gspro, read_gsref, build_speciation_matrix, speciate_emissions
+
+# Controls
+export ControlSpec, read_growth_factors, read_control_factors, apply_controls
+
+# Elevated source identification
+export ElevationCriteria, DEFAULT_ELEVATION_CRITERIA,
+    analytical_plume_rise, classify_point_sources, group_stacks
+
+# Vertical layer allocation
+export LayerConfig, MetProfile, compute_layer_fractions,
+    allocate_point_to_layers, laypoint
+
+# Biogenic emissions
+export BiogenicConfig, read_beld, read_emission_factors,
+    temperature_adjustment, light_adjustment, compute_biogenic_emissions
 
 end

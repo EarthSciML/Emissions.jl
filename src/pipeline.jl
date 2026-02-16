@@ -176,7 +176,11 @@ end
         counties_shapefile::String="",
         pollutant_groups::Vector{String}=["VOC", "NOX", "NH3", "SO2", "PM25"],
         do_temporal::Bool=true,
-        timezone_offset::Int=0
+        timezone_offset::Int=0,
+        gspro::DataFrame=DataFrame(),
+        gsref::DataFrame=DataFrame(),
+        speciation_basis::Symbol=:mass,
+        controls::Vector{ControlSpec}=ControlSpec[]
     ) -> DataFrame
 
 Execute the complete emissions processing pipeline (all in-memory).
@@ -185,10 +189,12 @@ Pipeline steps:
 1. Read FF10 inventory files
 2. Aggregate and filter emissions
 3. Map pollutant names
-4. Optionally assign surrogates (if gridref provided)
-5. Spatial allocation to grid
-6. Temporal allocation (if profiles and xref provided and `do_temporal=true`)
-7. Merge spatial + temporal into gridded hourly emissions
+4. Apply controls (if provided)
+5. Speciation (if GSPRO/GSREF provided)
+6. Assign surrogates (if gridref provided)
+7. Spatial allocation to grid
+8. Temporal allocation (if profiles and xref provided and `do_temporal=true`)
+9. Merge spatial + temporal into gridded hourly emissions
 
 # Arguments
 - `inventory_files`: Vector of `(filepath, format)` tuples for FF10 files.
@@ -202,6 +208,10 @@ Pipeline steps:
 - `pollutant_groups`: Pollutant groups to process.
 - `do_temporal`: Whether to perform temporal allocation.
 - `timezone_offset`: UTC offset in hours.
+- `gspro`: Speciation profiles from [`read_gspro`](@ref). If non-empty, speciation is applied.
+- `gsref`: Speciation cross-reference from [`read_gsref`](@ref).
+- `speciation_basis`: `:mass` or `:mole` for speciation factor calculation.
+- `controls`: Control specifications from [`read_growth_factors`](@ref) or [`read_control_factors`](@ref).
 
 # Returns
 If `do_temporal=true`: A `DataFrame` with gridded hourly emissions
@@ -221,7 +231,11 @@ function process_emissions(;
         counties_shapefile::String = "",
         pollutant_groups::Vector{String} = ["VOC", "NOX", "NH3", "SO2", "PM25"],
         do_temporal::Bool = true,
-        timezone_offset::Int = 0
+        timezone_offset::Int = 0,
+        gspro::DataFrame = DataFrame(),
+        gsref::DataFrame = DataFrame(),
+        speciation_basis::Symbol = :mass,
+        controls::Vector{ControlSpec} = ControlSpec[]
     )
     # Step 1: Read inventory files
     raw_dfs = DataFrame[]
@@ -237,12 +251,26 @@ function process_emissions(;
     emissions = filter_known_pollutants(emissions)
     map_pollutant_names!(emissions)
 
-    # Step 4: Assign surrogates if gridref provided
+    # Step 4: Apply controls (optional)
+    if !isempty(controls)
+        emissions = apply_controls(emissions, controls)
+    end
+
+    # Step 5: Speciation (optional)
+    if nrow(gspro) > 0 && nrow(gsref) > 0
+        emissions = speciate_emissions(emissions, gspro, gsref; basis = speciation_basis)
+        # Rename species column back to POLID for downstream compatibility
+        if hasproperty(emissions, :species) && !hasproperty(emissions, :POLID)
+            rename!(emissions, :species => :POLID)
+        end
+    end
+
+    # Step 5: Assign surrogates if gridref provided
     if nrow(gridref) > 0
         emissions = assign_surrogates(emissions, gridref)
     end
 
-    # Step 5: Spatial allocation
+    # Step 6: Spatial allocation
     gridded = process_emissions_spatial(
         emissions, grid;
         counties_shapefile = counties_shapefile,
@@ -254,14 +282,14 @@ function process_emissions(;
         return gridded
     end
 
-    # Step 6: Temporal allocation
+    # Step 7: Temporal allocation
     if nrow(profiles) > 0 && nrow(xref) > 0
         hourly = temporal_allocate(
             emissions, profiles, xref,
             episode_start, episode_end; timezone_offset = timezone_offset
         )
 
-        # Step 7: Merge spatial + temporal
+        # Step 8: Merge spatial + temporal
         locIndex = compute_grid_indices(
             emissions, grid;
             counties_shapefile = counties_shapefile
