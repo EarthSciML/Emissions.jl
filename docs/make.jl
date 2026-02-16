@@ -20,6 +20,12 @@ makedocs(;
         "NEI Processing" => "nei_processing.md",
         "Spatial Processing Pipeline" => "spatial_processing.md",
         "Temporal Processing" => "temporal_processing.md",
+        "Chemical Speciation" => "speciation.md",
+        "Emissions Controls" => "controls.md",
+        "Elevated Source Identification" => "elevpoint.md",
+        "Vertical Layer Allocation" => "laypoint.md",
+        "Conservative Regridding" => "regridding.md",
+        "Biogenic Emissions" => "biogenic.md",
     ],
     checkdocs = :none
 )

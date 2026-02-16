@@ -5,6 +5,7 @@ authors = ["EarthSciML authors and contributors"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+ConservativeRegridding = "8e50ac2c-eb48-49bc-a402-07c87b949343"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 GeoDataFrames = "62cb38b5-d8d2-4862-a48e-6a340996859f"
@@ -19,6 +20,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 CSV = "0.9, 0.10"
+ConservativeRegridding = "0.1.0"
 DataFrames = "1"
 GeoDataFrames = "0.3, 0.4"
 GeoInterface = "1"

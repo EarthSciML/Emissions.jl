@@ -1,6 +1,7 @@
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon,
     GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
-    cell_bounds, cell_polygon, cell_area
+    cell_bounds, cell_polygon, cell_area,
+    build_regridder, grid_polygons
 
 """
     cell_bounds(grid::GridDef, idx::Int) -> (xmin, xmax, ymin, ymax)
@@ -302,4 +303,58 @@ function uniqueLoc(lons::Vector{Float64}, lats::Vector{Float64})
         end
     end
     return seen
+end
+
+"""
+    grid_polygons(grid::GridDef) -> Vector
+
+Return a vector of GeoInterface polygons for all grid cells, ordered by
+cell index `(j-1)*Nx + i`.
+"""
+function grid_polygons(grid::GridDef)
+    polys = []
+    for j in 1:grid.Ny
+        for i in 1:grid.Nx
+            idx = (j - 1) * grid.Nx + i
+            push!(polys, cell_polygon(grid, idx))
+        end
+    end
+    return polys
+end
+
+"""
+    _to_vertex_ring(geom) -> Vector{Tuple{Float64,Float64}}
+
+Extract the exterior ring vertex coordinates from a GeoInterface geometry
+as a vector of (x,y) tuples suitable for ConservativeRegridding.
+"""
+function _to_vertex_ring(geom)
+    ring = GI.getexterior(geom)
+    coords = Tuple{Float64, Float64}[]
+    for pt in GI.getpoint(ring)
+        push!(coords, (Float64(GI.x(pt)), Float64(GI.y(pt))))
+    end
+    return coords
+end
+
+"""
+    build_regridder(source_geometries::Vector, grid::GridDef) -> ConservativeRegridding.Regridder
+
+Build a ConservativeRegridding.jl `Regridder` from source geometries to grid cells.
+
+The regridder computes intersection areas between all source geometries and
+grid cells using an efficient spatial index (STRtree). The resulting object
+can be reused for multiple regridding operations on the same grid.
+
+# Arguments
+- `source_geometries`: Vector of GeoInterface-compatible polygon geometries.
+- `grid::GridDef`: Target grid definition.
+
+# Returns
+A `ConservativeRegridding.Regridder` that can be used with `ConservativeRegridding.regrid`.
+"""
+function build_regridder(source_geometries::Vector, grid::GridDef)
+    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
+    src_verts = [_to_vertex_ring(g) for g in source_geometries]
+    return ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
 end
