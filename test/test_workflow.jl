@@ -1,4 +1,4 @@
-using DataFrames, LibGEOS, SparseArrays, Unitful
+using DataFrames, SparseArrays, Unitful
 
 @testset "Workflow tests" begin
     @testset "location_key" begin

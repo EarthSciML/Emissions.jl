@@ -1,4 +1,6 @@
-using DataFrames, LibGEOS
+using DataFrames
+import GeoInterface as GI
+import GeometryOps as GO
 
 @testset "Types tests" begin
     @testset "SurrogateSpec construction" begin
@@ -16,9 +18,10 @@ using DataFrames, LibGEOS
     end
 
     @testset "GridDef construction" begin
-        cell = LibGEOS.readgeom("POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
-        grid = GridDef("test", 1, 1, "EPSG:4326",
-            [cell], [[(0.0, 0.0), (1.0, 1.0)]])
+        grid = GridDef(
+            "test", 1, 1, "EPSG:4326",
+            [[(0.0, 0.0), (1.0, 1.0)]]
+        )
         @test grid.Name == "test"
         @test grid.Nx == 1
         @test grid.Ny == 1
@@ -54,10 +57,11 @@ using DataFrames, LibGEOS
             "US", "Pop", 100, "", "", "", "",
             String[], String[], Float64[], "", String[], Float64[]
         )
-        cell = LibGEOS.readgeom("POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
-        grid = GridDef("test", 1, 1, "EPSG:4326",
-            [cell], [[(0.0, 0.0), (1.0, 1.0)]])
-        gridRef = DataFrame(SCC=String[], SrgCode=Int[])
+        grid = GridDef(
+            "test", 1, 1, "EPSG:4326",
+            [[(0.0, 0.0), (1.0, 1.0)]]
+        )
+        gridRef = DataFrame(SCC = String[], SrgCode = Int[])
         sp = SpatialProcessor([srg], grid, gridRef, "+proj=longlat", false, 100, 10)
         @test sp.MatchFullSCC == false
         @test sp.MemCacheSize == 100

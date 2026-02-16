@@ -95,7 +95,6 @@ using SparseArrays
         @test test_grid.Name == "TestGrid"
         @test test_grid.Nx == 2
         @test test_grid.Ny == 2
-        @test length(test_grid.Cells) == 4
         @test length(test_grid.Extent) == 4
 
         # Test GetIndex function with point
@@ -155,7 +154,7 @@ using SparseArrays
             col12 = [""],
             col13 = [""]
         )
-        CSV.write(temp_srgspec, test_srgspec_data; header=false)
+        CSV.write(temp_srgspec, test_srgspec_data; header = false)
 
         # Create test_srgspec for later use
         test_srgspec = DataFrame(
@@ -213,7 +212,7 @@ using SparseArrays
         # Cleanup
         rm(temp_gridref)
         rm(temp_srgspec)
-        rm(temp_dir, recursive=true)
+        rm(temp_dir, recursive = true)
     end
 
     @testset "Unit conversion integration" begin
@@ -232,12 +231,12 @@ using SparseArrays
 
         # Test freezing point
         freezing_k = kelvin(32.0)
-        @test isapprox(ustrip(freezing_k), 273.15, rtol=1e-10)
+        @test isapprox(ustrip(freezing_k), 273.15, rtol = 1.0e-10)
 
         # Test that conversion factors make sense
         @test ustrip(tonperyear) > 0
         @test ustrip(tonpermonth) > ustrip(tonperyear)  # Monthly should be larger rate
-        @test isapprox(ustrip(foot), 0.3048, rtol=1e-10)  # feet to meters
+        @test isapprox(ustrip(foot), 0.3048, rtol = 1.0e-10)  # feet to meters
     end
 
     @testset "Pollutant mapping integration" begin

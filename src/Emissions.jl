@@ -4,9 +4,10 @@ export g,
 
 using CSV
 using DataFrames
-using Shapefile
-using LibGEOS
-using GeoInterface
+using Dates
+import GeoDataFrames
+import GeoInterface as GI
+import GeometryOps as GO
 using Proj
 using SparseArrays
 using Printf
@@ -22,6 +23,8 @@ include("surrogates.jl")
 include("output.jl")
 include("pipeline.jl")
 include("workflow.jl")
+include("temporal.jl")
+include("merge.jl")
 
 # Export all public functions and types
 # Constants and unit conversions
@@ -38,20 +41,30 @@ export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
     getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
 
 # Spatial processing
-export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc
+export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex,
+    recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
+    cell_bounds, cell_polygon, cell_area
 
 # Surrogate operations
-export generate_data_sparse_matrices, generate_weight_sparse_matrices, generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex
+export generate_data_sparse_matrices, generate_weight_sparse_matrices,
+    generate_grid_sparse_matrices, generate_countySurrogate, update_locIndex
 
 # Output functions
 export writeEmis, find_surrogate_by_code, get_data_weight_shapefiles
 
 # Pipeline functions
 export read_ff10, aggregate_emissions, filter_known_pollutants,
-    map_pollutant_names!, assign_surrogates, build_data_weight_map
+    map_pollutant_names!, assign_surrogates, build_data_weight_map,
+    process_emissions
 
 # Workflow orchestration
 export location_key, compute_grid_indices, refine_indices_with_surrogates,
     allocate_emissions_to_grid, process_emissions_spatial
+
+# Temporal allocation
+export read_temporal_profiles, read_temporal_xref, temporal_allocate
+
+# Merge
+export merge_emissions, merge_categories
 
 end

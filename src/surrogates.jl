@@ -20,7 +20,7 @@ end
     read_crs_epsg(shapefile_path::AbstractString)
 
 Read the CRS from a shapefile's .prj file and return the EPSG code as an integer.
-Uses Proj.jl for CRS identification instead of Python pyproj.
+Uses Proj.jl for CRS identification.
 """
 function read_crs_epsg(shapefile_path::AbstractString)
     prj_path = replace(shapefile_path, r"\.shp$" => ".prj")
@@ -29,7 +29,7 @@ function read_crs_epsg(shapefile_path::AbstractString)
     end
     wkt = read(prj_path, String)
     crs = Proj.CRS(wkt)
-    identified = Proj.identify(crs; auth_name="EPSG")
+    identified = Proj.identify(crs; auth_name = "EPSG")
     if isempty(identified)
         error("Could not identify EPSG code for CRS in $prj_path")
     end
@@ -42,32 +42,30 @@ end
 """
     generate_data_sparse_matrices(shapefile_path, attribute, grid, inputSR)
 
-Read a data shapefile and generate sparse matrices representing the
+Read a data shapefile using GeoDataFrames and generate sparse matrices representing the
 spatial allocation of each region (identified by `attribute`) to grid cells.
 Returns a dictionary mapping attribute values to sparse matrices.
 """
-function generate_data_sparse_matrices(shapefile_path::AbstractString,
-    attribute::AbstractString, grid::GridDef, inputSR::String)
+function generate_data_sparse_matrices(
+        shapefile_path::AbstractString,
+        attribute::AbstractString, grid::GridDef, inputSR::String
+    )
 
-    table = Shapefile.Table(shapefile_path)
-    col = find_column_name(DataFrame(table), attribute)
+    df = GeoDataFrames.read(shapefile_path)
+    col = find_column_name(df, attribute)
 
-    result = Dict{String,SparseMatrixCSC{Float64,Int}}()
+    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
 
-    for row in table
-        key = string(getproperty(row, Symbol(col)))
-        geom = Shapefile.shape(row)
-
-        # Convert geometry to LibGEOS
-        wkt_str = GeoInterface.astext(geom)
-        lgeos_geom = LibGEOS.readgeom(wkt_str)
+    for row in eachrow(df)
+        key = string(row[Symbol(col)])
+        geom = row.geometry
 
         for j in 1:grid.Ny
             for i in 1:grid.Nx
-                idx = (j - 1) * grid.Nx + i
-                if LibGEOS.intersects(grid.Cells[idx], lgeos_geom)
-                    intersection = LibGEOS.intersection(grid.Cells[idx], lgeos_geom)
-                    area = LibGEOS.area(intersection)
+                cell = cell_polygon(grid, (j - 1) * grid.Nx + i)
+                inter = GO.intersection(geom, cell; target = GI.PolygonTrait())
+                if !isempty(inter)
+                    area = sum(GO.area, inter)
                     if area > 0.0
                         if !haskey(result, key)
                             result[key] = spzeros(grid.Ny, grid.Nx)
@@ -85,37 +83,36 @@ end
 """
     generate_weight_sparse_matrices(shapefile_path, weight_columns, weight_factors, grid, inputSR)
 
-Read a weight shapefile and generate sparse matrices of weighted values on the grid.
+Read a weight shapefile using GeoDataFrames and generate sparse matrices
+of weighted values on the grid.
 """
-function generate_weight_sparse_matrices(shapefile_path::AbstractString,
-    weight_columns::Vector{String}, weight_factors::Vector{Float64},
-    grid::GridDef, inputSR::String)
+function generate_weight_sparse_matrices(
+        shapefile_path::AbstractString,
+        weight_columns::Vector{String}, weight_factors::Vector{Float64},
+        grid::GridDef, inputSR::String
+    )
 
-    table = Shapefile.Table(shapefile_path)
-    df = DataFrame(table)
+    df = GeoDataFrames.read(shapefile_path)
 
     result = spzeros(grid.Ny, grid.Nx)
 
-    for row in table
-        geom = Shapefile.shape(row)
-        wkt_str = GeoInterface.astext(geom)
-        lgeos_geom = LibGEOS.readgeom(wkt_str)
-
+    for row in eachrow(df)
         weight = 0.0
         for (col, factor) in zip(weight_columns, weight_factors)
             actual_col = find_column_name(df, col)
-            val = getproperty(row, Symbol(actual_col))
+            val = row[Symbol(actual_col)]
             if !ismissing(val) && val isa Number
                 weight += val * factor
             end
         end
 
+        geom = row.geometry
         for j in 1:grid.Ny
             for i in 1:grid.Nx
-                idx = (j - 1) * grid.Nx + i
-                if LibGEOS.intersects(grid.Cells[idx], lgeos_geom)
-                    intersection = LibGEOS.intersection(grid.Cells[idx], lgeos_geom)
-                    area = LibGEOS.area(intersection)
+                cell = cell_polygon(grid, (j - 1) * grid.Nx + i)
+                inter = GO.intersection(geom, cell; target = GI.PolygonTrait())
+                if !isempty(inter)
+                    area = sum(GO.area, inter)
                     if area > 0.0
                         result[j, i] += weight * area
                     end
@@ -137,7 +134,7 @@ function generate_grid_sparse_matrices(grid::GridDef)
     for j in 1:grid.Ny
         for i in 1:grid.Nx
             idx = (j - 1) * grid.Nx + i
-            result[j, i] = LibGEOS.area(grid.Cells[idx])
+            result[j, i] = cell_area(grid, idx)
         end
     end
     return result
@@ -151,11 +148,13 @@ For each region in data_matrices, the surrogate is computed as:
   surrogate = (data .* weight) / sum(data .* weight)
 Falls back to area-based allocation if weight sum is zero.
 """
-function generate_countySurrogate(data_matrices::Dict{String,SparseMatrixCSC{Float64,Int}},
-    weight_matrix::SparseMatrixCSC{Float64,Int},
-    grid_matrix::SparseMatrixCSC{Float64,Int})
+function generate_countySurrogate(
+        data_matrices::Dict{String, SparseMatrixCSC{Float64, Int}},
+        weight_matrix::SparseMatrixCSC{Float64, Int},
+        grid_matrix::SparseMatrixCSC{Float64, Int}
+    )
 
-    result = Dict{String,SparseMatrixCSC{Float64,Int}}()
+    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
 
     for (key, data) in data_matrices
         weighted = data .* weight_matrix
@@ -183,8 +182,10 @@ end
 Update a location index dictionary with surrogate allocation data for a given FIPS code.
 Returns the IndexInfo for the FIPS code from the surrogates, or a default empty IndexInfo.
 """
-function update_locIndex(locIndex::Dict{String,IndexInfo}, fips::AbstractString,
-    surrogates::Dict{String,SparseMatrixCSC{Float64,Int}})
+function update_locIndex(
+        locIndex::Dict{String, IndexInfo}, fips::AbstractString,
+        surrogates::Dict{String, SparseMatrixCSC{Float64, Int}}
+    )
 
     if haskey(surrogates, fips)
         srg = surrogates[fips]

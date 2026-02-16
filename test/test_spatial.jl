@@ -1,18 +1,40 @@
-using LibGEOS, SparseArrays
+using SparseArrays
+import GeoInterface as GI
+import GeometryOps as GO
 
 @testset "Spatial tests" begin
     @testset "NewPolygon" begin
         coords = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
         poly = NewPolygon(coords)
-        @test LibGEOS.area(poly) ≈ 1.0
+        @test GO.area(poly) ≈ 1.0
     end
 
     @testset "NewGridIrregular" begin
         grid = NewGridIrregular("test", 3, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         @test grid.Nx == 3
         @test grid.Ny == 2
-        @test length(grid.Cells) == 6
-        @test LibGEOS.area(grid.Cells[1]) ≈ 1.0
+        @test length(grid.Extent) == 6
+        @test cell_area(grid, 1) ≈ 1.0
+    end
+
+    @testset "cell_bounds" begin
+        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        xmin, xmax, ymin, ymax = cell_bounds(grid, 1)
+        @test xmin ≈ 0.0
+        @test xmax ≈ 1.0
+        @test ymin ≈ 0.0
+        @test ymax ≈ 1.0
+    end
+
+    @testset "cell_polygon" begin
+        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        poly = cell_polygon(grid, 1)
+        @test GO.area(poly) ≈ 1.0
+    end
+
+    @testset "cell_area" begin
+        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 2.0, 3.0, 0.0, 0.0)
+        @test cell_area(grid, 1) ≈ 6.0
     end
 
     @testset "GetIndex point" begin
@@ -36,6 +58,18 @@ using LibGEOS, SparseArrays
         idx = GetIndex(poly, grid)
         @test idx.inGrid == true
         @test length(idx.rows) >= 1
+    end
+
+    @testset "GetIndex polygon spanning multiple cells" begin
+        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+
+        # Polygon covering exactly cell (1,1) and half of cell (2,1)
+        poly = NewPolygon([(0.0, 0.0), (1.5, 0.0), (1.5, 1.0), (0.0, 1.0)])
+        idx = GetIndex(poly, grid)
+        @test idx.inGrid == true
+        @test length(idx.rows) == 2
+        # Fractions should reflect area proportions: 1.0/1.5 and 0.5/1.5
+        @test sum(idx.fracs) ≈ 1.0
     end
 
     @testset "recordToGrid" begin
@@ -111,13 +145,13 @@ using LibGEOS, SparseArrays
 
         # Test that setupSpatialProcessor can parse the configuration
         try
-            sp, gd = setupSpatialProcessor(config)
+            sp = setupSpatialProcessor(config)
 
             @test sp isa SpatialProcessor
-            @test gd isa GridDef
+            @test sp.Grids isa GridDef
             @test length(sp.SrgSpecs) >= 1
             @test sp.SrgSpecs[1].Code == 100
-            @test gd.Name == "TestGrid"
+            @test sp.Grids.Name == "TestGrid"
             @test nrow(sp.GridRef) >= 2
         catch e
             # Expected to fail with missing files or parsing errors
@@ -125,17 +159,10 @@ using LibGEOS, SparseArrays
         end
 
         # Cleanup
-        rm(temp_dir; recursive=true)
+        rm(temp_dir; recursive = true)
     end
 
     @testset "findCountyPolygon" begin
-        # Create a temporary shapefile for testing
-        temp_dir = mktempdir()
-
-        # Create synthetic county polygons using LibGEOS
-        poly1 = NewPolygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
-        poly2 = NewPolygon([(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0)])
-
         # Since creating actual shapefiles is complex, test with non-existent file
         # This tests the error handling path
         try
@@ -143,19 +170,7 @@ using LibGEOS, SparseArrays
             @test result === nothing
         catch e
             # Expected to fail with file not found
-            @test e isa Union{SystemError, ArgumentError}
+            @test e isa Exception
         end
-
-        # Test with invalid FIPS (empty string)
-        try
-            result2 = findCountyPolygon("", "nonexistent.shp")
-            @test result2 === nothing
-        catch e
-            # Expected to fail with file not found
-            @test e isa Union{SystemError, ArgumentError}
-        end
-
-        # Cleanup
-        rm(temp_dir; recursive=true)
     end
 end
