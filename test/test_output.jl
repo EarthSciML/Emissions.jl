@@ -1,20 +1,24 @@
-using LibGEOS, SparseArrays
+using SparseArrays
 
 @testset "Output tests" begin
     @testset "format_float" begin
         @test Emissions.format_float(0.0) == "0.0"
-        @test Emissions.format_float(1e-25) == "0.0"
+        @test Emissions.format_float(1.0e-25) == "0.0"
         @test Emissions.format_float(1.23456) == "1.234560"
-        @test Emissions.format_float(1e-5) == "1.000000e-05"
-        @test Emissions.format_float(1e7) == "1.000000e+07"
+        @test Emissions.format_float(1.0e-5) == "1.000000e-05"
+        @test Emissions.format_float(1.0e7) == "1.000000e+07"
     end
 
     @testset "find_surrogate_by_code" begin
         srgs = [
-            SurrogateSpec("US", "Pop", 100, "", "", "", "",
-                String[], String[], Float64[], "", String[], Float64[]),
-            SurrogateSpec("US", "Area", 200, "", "", "", "",
-                String[], String[], Float64[], "", String[], Float64[]),
+            SurrogateSpec(
+                "US", "Pop", 100, "", "", "", "",
+                String[], String[], Float64[], "", String[], Float64[]
+            ),
+            SurrogateSpec(
+                "US", "Area", 200, "", "", "", "",
+                String[], String[], Float64[], "", String[], Float64[]
+            ),
         ]
         @test find_surrogate_by_code(srgs, 100).Name == "Pop"
         @test find_surrogate_by_code(srgs, 200).Name == "Area"
@@ -22,8 +26,10 @@ using LibGEOS, SparseArrays
     end
 
     @testset "get_data_weight_shapefiles" begin
-        srg = SurrogateSpec("US", "Pop", 100, "/data.shp", "POP",
-            "/weight.shp", "", String[], String[], Float64[], "", String[], Float64[])
+        srg = SurrogateSpec(
+            "US", "Pop", 100, "/data.shp", "POP",
+            "/weight.shp", "", String[], String[], Float64[], "", String[], Float64[]
+        )
         data_path, weight_path = get_data_weight_shapefiles(srg)
         @test data_path == "/data.shp"
         @test weight_path == "/weight.shp"
@@ -34,7 +40,7 @@ using LibGEOS, SparseArrays
         data = sparse([1, 2], [1, 2], [1.5, 2.5], 2, 2)
 
         tmpfile = tempname() * ".csv"
-        writeEmis(tmpfile, data, grid; pollutant="NOX", units="kg/s")
+        writeEmis(tmpfile, data, grid; pollutant = "NOX", units = "kg/s")
 
         content = read(tmpfile, String)
         @test occursin("NOX", content)

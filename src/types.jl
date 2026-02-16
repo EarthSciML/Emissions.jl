@@ -33,14 +33,15 @@ end
     GridDef
 
 Specifies the grid that we are allocating the emissions to.
+Each cell is described by its bounding box in `Extent`:
+`[(xmin, ymin), (xmax, ymax)]`.
 """
 struct GridDef
     Name::String
     Nx::Int
     Ny::Int
     SR::String
-    Cells::Vector{LibGEOS.Polygon}
-    Extent::Vector{Vector{Tuple{Float64,Float64}}}
+    Extent::Vector{Vector{Tuple{Float64, Float64}}}
 end
 
 """

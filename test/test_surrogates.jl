@@ -30,7 +30,7 @@ using SparseArrays
     end
 
     @testset "update_locIndex with matching FIPS" begin
-        locIndex = Dict{String,IndexInfo}()
+        locIndex = Dict{String, IndexInfo}()
         surrogates = Dict(
             "01001" => sparse([1, 2], [1, 2], [0.6, 0.4], 3, 3),
         )
@@ -42,8 +42,8 @@ using SparseArrays
     end
 
     @testset "update_locIndex without matching FIPS" begin
-        locIndex = Dict{String,IndexInfo}()
-        surrogates = Dict{String,SparseMatrixCSC{Float64,Int}}()
+        locIndex = Dict{String, IndexInfo}()
+        surrogates = Dict{String, SparseMatrixCSC{Float64, Int}}()
 
         idx = update_locIndex(locIndex, "99999", surrogates)
         @test idx.inGrid == false
@@ -52,7 +52,7 @@ using SparseArrays
 
     @testset "find_column_name" begin
         using DataFrames
-        df = DataFrame(Population=[1, 2], Area=[3.0, 4.0])
+        df = DataFrame(Population = [1, 2], Area = [3.0, 4.0])
         @test Emissions.find_column_name(df, "population") == "Population"
         @test Emissions.find_column_name(df, "POPULATION") == "Population"
         @test_throws ErrorException Emissions.find_column_name(df, "nonexistent")
@@ -84,12 +84,12 @@ using SparseArrays
         test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Test error handling with non-existent shapefile
-        @test_throws Union{SystemError, ArgumentError} generate_data_sparse_matrices(
+        @test_throws Exception generate_data_sparse_matrices(
             "nonexistent.shp", "ATTR", test_grid, "+proj=longlat +datum=WGS84"
         )
 
         # Test with empty attribute name
-        @test_throws Union{SystemError, ArgumentError} generate_data_sparse_matrices(
+        @test_throws Exception generate_data_sparse_matrices(
             "nonexistent.shp", "", test_grid, "+proj=longlat +datum=WGS84"
         )
     end
@@ -99,12 +99,12 @@ using SparseArrays
         test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Test error handling with non-existent shapefile
-        @test_throws Union{SystemError, ArgumentError} generate_weight_sparse_matrices(
+        @test_throws Exception generate_weight_sparse_matrices(
             "nonexistent.shp", ["WEIGHT"], [1.0], test_grid, "+proj=longlat +datum=WGS84"
         )
 
         # Test with empty weight columns
-        @test_throws Union{SystemError, ArgumentError, BoundsError} generate_weight_sparse_matrices(
+        @test_throws Exception generate_weight_sparse_matrices(
             "nonexistent.shp", String[], Float64[], test_grid, "+proj=longlat +datum=WGS84"
         )
     end

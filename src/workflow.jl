@@ -75,9 +75,7 @@ function compute_grid_indices(
         elseif !isempty(counties_shapefile) && isfile(counties_shapefile)
             county_geom = findCountyPolygon(fips, counties_shapefile)
             if county_geom !== nothing
-                wkt_str = GeoInterface.astext(county_geom)
-                lgeos_poly = LibGEOS.readgeom(wkt_str)
-                idx = GetIndex(lgeos_poly, grid)
+                idx = GetIndex(county_geom, grid)
                 locIndex[key] = idx
             else
                 locIndex[key] = IndexInfo(Int[], Int[], Float64[], false, false)

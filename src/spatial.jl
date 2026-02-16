@@ -1,18 +1,50 @@
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon,
-    GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc
+    GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
+    cell_bounds, cell_polygon, cell_area
+
+"""
+    cell_bounds(grid::GridDef, idx::Int) -> (xmin, xmax, ymin, ymax)
+
+Return the bounding box of grid cell `idx` as `(xmin, xmax, ymin, ymax)`.
+"""
+function cell_bounds(grid::GridDef, idx::Int)
+    ext = grid.Extent[idx]
+    xmin, ymin = ext[1]
+    xmax, ymax = ext[2]
+    return xmin, xmax, ymin, ymax
+end
+
+"""
+    cell_polygon(grid::GridDef, idx::Int)
+
+Construct a GeoInterface polygon for grid cell `idx` from its bounding box.
+"""
+function cell_polygon(grid::GridDef, idx::Int)
+    xmin, xmax, ymin, ymax = cell_bounds(grid, idx)
+    return GI.Polygon([[(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax), (xmin, ymin)]])
+end
+
+"""
+    cell_area(grid::GridDef, idx::Int) -> Float64
+
+Return the area of grid cell `idx` computed from its bounding box.
+"""
+function cell_area(grid::GridDef, idx::Int)
+    xmin, xmax, ymin, ymax = cell_bounds(grid, idx)
+    return (xmax - xmin) * (ymax - ymin)
+end
 
 """
     NewPolygon(coords::Vector{Tuple{Float64,Float64}})
 
-Create a LibGEOS polygon from a vector of coordinate tuples.
+Create a GeoInterface polygon from a vector of coordinate tuples.
 The polygon is automatically closed if needed.
 """
-function NewPolygon(coords::Vector{Tuple{Float64,Float64}})
+function NewPolygon(coords::Vector{Tuple{Float64, Float64}})
     if coords[1] != coords[end]
         push!(coords, coords[1])
     end
-    wkt = "POLYGON((" * join(["$(c[1]) $(c[2])" for c in coords], ",") * "))"
-    return LibGEOS.readgeom(wkt)
+    return GI.Polygon([coords])
 end
 
 """
@@ -20,10 +52,11 @@ end
 
 Create a `GridDef` with a regular (but potentially projected) grid.
 """
-function NewGridIrregular(name::String, nx::Int, ny::Int, sr::String,
-    dx::Float64, dy::Float64, x0::Float64, y0::Float64)
-    cells = LibGEOS.Polygon[]
-    extents = Vector{Tuple{Float64,Float64}}[]
+function NewGridIrregular(
+        name::String, nx::Int, ny::Int, sr::String,
+        dx::Float64, dy::Float64, x0::Float64, y0::Float64
+    )
+    extents = Vector{Tuple{Float64, Float64}}[]
 
     for j in 1:ny
         for i in 1:nx
@@ -31,16 +64,11 @@ function NewGridIrregular(name::String, nx::Int, ny::Int, sr::String,
             xmax = x0 + i * dx
             ymin = y0 + (j - 1) * dy
             ymax = y0 + j * dy
-            coords = [
-                (xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax), (xmin, ymin)
-            ]
-            wkt = "POLYGON((" * join(["$(c[1]) $(c[2])" for c in coords], ",") * "))"
-            push!(cells, LibGEOS.readgeom(wkt))
             push!(extents, [(xmin, ymin), (xmax, ymax)])
         end
     end
 
-    return GridDef(name, nx, ny, sr, cells, extents)
+    return GridDef(name, nx, ny, sr, extents)
 end
 
 """
@@ -50,8 +78,7 @@ Create an irregular grid by reading polygon coordinates from a file.
 The file should contain polygon coordinate strings in the format used by the NEI processing notebook.
 """
 function NewGridIrregular(name::String, filepath::String, inputSR::String, outputSR::String)
-    cells = LibGEOS.Polygon[]
-    extents = Vector{Tuple{Float64,Float64}}[]
+    extents = Vector{Tuple{Float64, Float64}}[]
     regex = r"X:(-?\d+(\.\d+)?(e[+\-]?\d+)?) Y:(-?\d+(\.\d+)?(e[+\-]?\d+)?)"
     trans = Proj.Transformation(inputSR, outputSR)
 
@@ -64,7 +91,6 @@ function NewGridIrregular(name::String, filepath::String, inputSR::String, outpu
             matches = collect(eachmatch(regex, cleaned_str))
 
             if !isempty(matches)
-                wkt_points = Float64[]
                 extent_x = Float64[]
                 extent_y = Float64[]
 
@@ -72,26 +98,19 @@ function NewGridIrregular(name::String, filepath::String, inputSR::String, outpu
                     x1 = parse(Float64, match.captures[1])
                     y1 = parse(Float64, match.captures[4])
                     x, y = trans([x1, y1])
-                    push!(wkt_points, x, y)
                     push!(extent_x, x)
                     push!(extent_y, y)
                 end
 
-                # Create WKT polygon string
-                wkt_coords = [string(wkt_points[i], " ", wkt_points[i+1]) for i in 1:2:length(wkt_points)]
-                # Close the polygon by adding the first point at the end
-                if !isempty(wkt_coords) && wkt_coords[1] != wkt_coords[end]
-                    push!(wkt_coords, wkt_coords[1])
-                end
-                wkt = "POLYGON((" * join(wkt_coords, ", ") * "))"
-
                 try
-                    poly = LibGEOS.readgeom(wkt)
-                    push!(cells, poly)
-                    push!(extents, [(minimum(extent_x), minimum(extent_y)),
-                                   (maximum(extent_x), maximum(extent_y))])
+                    push!(
+                        extents, [
+                            (minimum(extent_x), minimum(extent_y)),
+                            (maximum(extent_x), maximum(extent_y)),
+                        ]
+                    )
                 catch e
-                    @warn "Failed to create polygon from coordinates: $e"
+                    @warn "Failed to create extent from coordinates: $e"
                     continue
                 end
             end
@@ -99,11 +118,11 @@ function NewGridIrregular(name::String, filepath::String, inputSR::String, outpu
     end
 
     # Infer grid dimensions from number of cells
-    ncells = length(cells)
+    ncells = length(extents)
     nx = isqrt(ncells)  # Approximate square grid
     ny = ncells ÷ nx + (ncells % nx > 0 ? 1 : 0)
 
-    return GridDef(name, nx, ny, outputSR, cells, extents)
+    return GridDef(name, nx, ny, outputSR, extents)
 end
 
 """
@@ -113,7 +132,7 @@ Set up a `SpatialProcessor` from a configuration object. Reads grid reference fi
 surrogate specifications, and grid definitions.
 """
 function setupSpatialProcessor(config::Config)
-    gridRef = vcat([CSV.read(f, DataFrame; comment="#") for f in config.f_gridRef]...)
+    gridRef = vcat([CSV.read(f, DataFrame; comment = "#") for f in config.f_gridRef]...)
 
     srgSpecs = readSrgSpecSMOKE(config.SrgSpec, config.SrgShapefileDirectory)
 
@@ -137,29 +156,27 @@ end
     findCountyPolygon(fips::AbstractString, countyShapefile::AbstractString)
 
 Find and return the polygon for a given FIPS code from a county shapefile.
+Uses GeoDataFrames to read the shapefile. Returns a GeoInterface-compatible
+geometry or `nothing` if not found.
 """
 function findCountyPolygon(fips::AbstractString, countyShapefile::AbstractString)
-    table = Shapefile.Table(countyShapefile)
-    for row in table
+    df = GeoDataFrames.read(countyShapefile)
+    for row in eachrow(df)
         geofips = lpad(string(row.STATEFP) * string(row.COUNTYFP), 5, '0')
         if geofips == fips
-            geom = Shapefile.shape(row)
-            return geom
+            return row.geometry
         end
     end
     return nothing
 end
 
 """
-    GetIndex(point_or_poly, grid::GridDef)
+    GetIndex(lon, lat, grid::GridDef)
 
-Find which grid cells a point or polygon intersects, and return an `IndexInfo`
-with the row/column indices and fractional coverage.
+Find which grid cell contains the point (lon, lat) and return an `IndexInfo`.
+Uses bounding box containment for efficient point-in-cell lookup.
 """
 function GetIndex(lon::Float64, lat::Float64, grid::GridDef)
-    point_wkt = "POINT($lon $lat)"
-    point = LibGEOS.readgeom(point_wkt)
-
     rows = Int[]
     cols = Int[]
     fracs = Float64[]
@@ -167,7 +184,8 @@ function GetIndex(lon::Float64, lat::Float64, grid::GridDef)
     for j in 1:grid.Ny
         for i in 1:grid.Nx
             idx = (j - 1) * grid.Nx + i
-            if LibGEOS.contains(grid.Cells[idx], point)
+            xmin, xmax, ymin, ymax = cell_bounds(grid, idx)
+            if xmin <= lon <= xmax && ymin <= lat <= ymax
                 push!(rows, j)
                 push!(cols, i)
                 push!(fracs, 1.0)
@@ -179,11 +197,19 @@ function GetIndex(lon::Float64, lat::Float64, grid::GridDef)
     return IndexInfo(rows, cols, fracs, false, false)
 end
 
-function GetIndex(poly::LibGEOS.Polygon, grid::GridDef)
+"""
+    GetIndex(geom, grid::GridDef)
+
+Find which grid cells a geometry intersects, and return an `IndexInfo`
+with the row/column indices and fractional coverage.
+Uses `GeometryOps.intersection` to compute intersection polygons and areas
+for each grid cell.
+"""
+function GetIndex(geom, grid::GridDef)
     rows = Int[]
     cols = Int[]
     fracs = Float64[]
-    totalArea = LibGEOS.area(poly)
+    totalArea = GO.area(geom)
 
     if totalArea == 0.0
         return IndexInfo(rows, cols, fracs, false, false)
@@ -194,10 +220,10 @@ function GetIndex(poly::LibGEOS.Polygon, grid::GridDef)
 
     for j in 1:grid.Ny
         for i in 1:grid.Nx
-            idx = (j - 1) * grid.Nx + i
-            if LibGEOS.intersects(grid.Cells[idx], poly)
-                intersection = LibGEOS.intersection(grid.Cells[idx], poly)
-                area = LibGEOS.area(intersection)
+            cell = cell_polygon(grid, (j - 1) * grid.Nx + i)
+            inter = GO.intersection(geom, cell; target = GI.PolygonTrait())
+            if !isempty(inter)
+                area = sum(GO.area, inter)
                 if area > 0.0
                     push!(rows, j)
                     push!(cols, i)
@@ -238,7 +264,7 @@ function GridFactors(grid::GridDef)
     for j in 1:grid.Ny
         for i in 1:grid.Nx
             idx = (j - 1) * grid.Nx + i
-            areas[j, i] = LibGEOS.area(grid.Cells[idx])
+            areas[j, i] = cell_area(grid, idx)
         end
     end
     return areas
@@ -250,7 +276,7 @@ end
 Return the indices of unique (lon, lat) coordinate pairs.
 """
 function uniqueCoordinates(lons::Vector{Float64}, lats::Vector{Float64})
-    seen = Dict{Tuple{Float64,Float64},Int}()
+    seen = Dict{Tuple{Float64, Float64}, Int}()
     indices = Int[]
     for i in eachindex(lons)
         key = (lons[i], lats[i])
@@ -268,7 +294,7 @@ end
 Return a dictionary mapping unique (lon, lat) pairs to their first occurrence index.
 """
 function uniqueLoc(lons::Vector{Float64}, lats::Vector{Float64})
-    seen = Dict{Tuple{Float64,Float64},Int}()
+    seen = Dict{Tuple{Float64, Float64}, Int}()
     for i in eachindex(lons)
         key = (lons[i], lats[i])
         if !haskey(seen, key)
