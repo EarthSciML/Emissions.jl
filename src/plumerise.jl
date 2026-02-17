@@ -71,16 +71,29 @@ function calcDeltaH(
     return deltaH
 end
 
-# ASME takes emissions stack height(m), diameter (m), temperature (K),
-# and exit velocity (m/s) and calculates the k index of the equivalent
-# emissions height after accounting for plume rise.
-# Additional required inputs are model layer heights (staggered grid; layerHeights [m]),
-# temperature at each layer [K] (unstaggered grid),
-# wind speed at each layer [m/s] (unstaggered grid),
-# stability class (sClass [0 or 1], unstaggered grid),
-# and stability parameter (s1 [unknown units], unstaggered grid).
-# Uses the plume rise calculation: ASME (1973), as described in Sienfeld and Pandis,
-# ``Atmospheric Chemistry and Physics - From Air Pollution to Climate Change
+"""
+    ASME(stackHeight, stackDiam, stackTemp, stackVel, layerHeights,
+         temperature, windSpeed, sClass, s1) -> (plumeLayer, plumeHeight)
+
+Calculate the effective emissions height after accounting for plume rise
+using the ASME (1973) algorithm, as described in Seinfeld and Pandis,
+"Atmospheric Chemistry and Physics - From Air Pollution to Climate Change".
+
+# Arguments
+- `stackHeight`: Stack height (m)
+- `stackDiam`: Stack diameter (m)
+- `stackTemp`: Stack exit temperature (K)
+- `stackVel`: Stack exit velocity (m/s)
+- `layerHeights`: Model layer interface heights (staggered grid, m)
+- `temperature`: Temperature at each layer (K, unstaggered grid)
+- `windSpeed`: Wind speed at each layer (m/s, unstaggered grid)
+- `sClass`: Stability class at each layer (0=unstable, >0.5=stable)
+- `s1`: Stability parameter at each layer
+
+# Returns
+A tuple `(plumeLayer, plumeHeight)` where `plumeLayer` is the layer index
+containing the plume top and `plumeHeight` is the effective plume height (m).
+"""
 function ASME(
         stackHeight,
         stackDiam,
