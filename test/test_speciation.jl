@@ -77,17 +77,38 @@ using DataFrames
         result = Emissions._match_speciation_profile(gsref, "36001", "2103007000", "VOC")
         @test result == "P001"
 
-        # Level 2: National default (FIPS=00000) + SCC + pollutant
+        # Level 3: National default (FIPS=00000) + SCC + pollutant
         result = Emissions._match_speciation_profile(gsref, "99999", "2103007000", "VOC")
         @test result == "P002"
 
-        # Level 3: Pollutant-only (SCC=0000000000)
+        # Level 4: Pollutant-only (SCC=0000000000)
         result = Emissions._match_speciation_profile(gsref, "99999", "9999999999", "NOX")
         @test result == "P003"
 
         # No match
         result = Emissions._match_speciation_profile(gsref, "99999", "9999999999", "SO2")
         @test result === nothing
+    end
+
+    @testset "_match_speciation_profile state-level matching" begin
+        gsref = DataFrame(
+            FIPS = ["36001", "36000", "00000"],
+            SCC = ["2103007000", "2103007000", "2103007000"],
+            pollutant_id = ["VOC", "VOC", "VOC"],
+            profile_code = ["P_COUNTY", "P_STATE", "P_NATIONAL"],
+        )
+
+        # Level 1: Exact county match
+        result = Emissions._match_speciation_profile(gsref, "36001", "2103007000", "VOC")
+        @test result == "P_COUNTY"
+
+        # Level 2: State-level match (FIPS 36005 -> state "36000")
+        result = Emissions._match_speciation_profile(gsref, "36005", "2103007000", "VOC")
+        @test result == "P_STATE"
+
+        # Level 3: National default for different state
+        result = Emissions._match_speciation_profile(gsref, "06001", "2103007000", "VOC")
+        @test result == "P_NATIONAL"
     end
 
     @testset "build_speciation_matrix mass basis" begin

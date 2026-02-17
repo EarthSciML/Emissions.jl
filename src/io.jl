@@ -252,7 +252,6 @@ function NewSpatialProcessor(srgSpecs::Vector{SurrogateSpec}, grids::GridDef, gr
         gridRef,
         inputSR,
         matchFullSCC,
-        100,
         10,
     )
     return sp

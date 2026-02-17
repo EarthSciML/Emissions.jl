@@ -265,12 +265,12 @@ function process_emissions(;
         end
     end
 
-    # Step 5: Assign surrogates if gridref provided
+    # Step 6: Assign surrogates if gridref provided
     if nrow(gridref) > 0
         emissions = assign_surrogates(emissions, gridref)
     end
 
-    # Step 6: Spatial allocation
+    # Step 7: Spatial allocation
     gridded = process_emissions_spatial(
         emissions, grid;
         counties_shapefile = counties_shapefile,
@@ -282,14 +282,14 @@ function process_emissions(;
         return gridded
     end
 
-    # Step 7: Temporal allocation
+    # Step 8: Temporal allocation
     if nrow(profiles) > 0 && nrow(xref) > 0
         hourly = temporal_allocate(
             emissions, profiles, xref,
             episode_start, episode_end; timezone_offset = timezone_offset
         )
 
-        # Step 8: Merge spatial + temporal
+        # Step 9: Merge spatial + temporal
         locIndex = compute_grid_indices(
             emissions, grid;
             counties_shapefile = counties_shapefile

@@ -245,6 +245,135 @@ using DataFrames, Dates, Unitful
         @test result[1, :emission_rate] ≈ 1.0e-3 / 84.0 rtol = 1.0e-6
     end
 
+    @testset "temporal_allocate per-FIPS timezone" begin
+        # Two sources in different timezones: FIPS 36001 (Eastern, UTC-5)
+        # and FIPS 06001 (Pacific, UTC-8)
+        emissions = DataFrame(
+            FIPS = ["36001", "06001"],
+            SCC = ["2103007000", "2103007000"],
+            POLID = ["NOX", "NOX"],
+            ANN_VALUE = [100.0, 100.0]
+        )
+        # Non-uniform diurnal profile: daytime hours (8-17) get 2x weight
+        diurnal = zeros(24)
+        for h in 1:24
+            diurnal[h] = (h >= 9 && h <= 18) ? 2.0 / 24.0 : 0.4 / 24.0
+        end
+        # Normalize so sum = 1.0
+        diurnal ./= sum(diurnal)
+
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "DIURNAL"],
+            profile_id = [1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), diurnal]
+        )
+        xref = DataFrame(
+            FIPS = ["00000"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        # Test at UTC hour 14 (9am Eastern, 6am Pacific)
+        ep_start = DateTime(2019, 7, 1, 14)
+        ep_end = DateTime(2019, 7, 1, 15)
+
+        timezone_map = Dict("36001" => -5, "06001" => -8)
+        result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end;
+                                   timezone_map = timezone_map)
+        @test nrow(result) == 2
+
+        # Eastern source: local hour 9 (daytime), Pacific source: local hour 6 (night)
+        eastern = filter(r -> r.FIPS == "36001", result)
+        pacific = filter(r -> r.FIPS == "06001", result)
+        @test nrow(eastern) == 1
+        @test nrow(pacific) == 1
+        # The eastern source should have higher emissions (daytime profile)
+        @test eastern[1, :emission_rate] > pacific[1, :emission_rate]
+    end
+
+    @testset "temporal_allocate day-specific diurnal profiles" begin
+        emissions = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            ANN_VALUE = [100.0]
+        )
+        # Weekday profile: concentrated in work hours
+        weekday_diurnal = fill(0.01, 24)
+        weekday_diurnal[9:17] .= 0.09  # 9 hours * 0.09 + 15 hours * 0.01 = 0.81 + 0.15 = 0.96
+        weekday_diurnal ./= sum(weekday_diurnal)
+
+        # Weekend profile: uniform
+        weekend_diurnal = fill(1.0 / 24.0, 24)
+
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "WEEKDAY", "WEEKEND"],
+            profile_id = [1, 1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), weekday_diurnal, weekend_diurnal]
+        )
+        xref = DataFrame(
+            FIPS = ["00000"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        # Monday July 1, 2019 at hour 12 (work hours) - should use WEEKDAY profile
+        result_weekday = temporal_allocate(emissions, profiles, xref,
+            DateTime(2019, 7, 1, 12), DateTime(2019, 7, 1, 13))
+        @test nrow(result_weekday) == 1
+
+        # Saturday July 6, 2019 at hour 12 - should use WEEKEND profile
+        result_weekend = temporal_allocate(emissions, profiles, xref,
+            DateTime(2019, 7, 6, 12), DateTime(2019, 7, 6, 13))
+        @test nrow(result_weekend) == 1
+
+        # Weekday hour 12 should differ from weekend hour 12
+        @test result_weekday[1, :emission_rate] != result_weekend[1, :emission_rate]
+    end
+
+    @testset "temporal_allocate full year mass conservation" begin
+        # With uniform profiles, summing hourly rates over a full year
+        # and dividing by 8760 should recover the annual value
+        emissions = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            ANN_VALUE = [1000.0]
+        )
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "DIURNAL"],
+            profile_id = [1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), fill(1.0 / 24.0, 24)]
+        )
+        xref = DataFrame(
+            FIPS = ["00000"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        # Full year
+        ep_start = DateTime(2019, 1, 1, 0)
+        ep_end = DateTime(2020, 1, 1, 0)
+        n_hours = 8760
+
+        result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end)
+        @test nrow(result) == n_hours
+
+        # With uniform profiles: each hour gets ann * (1/12) * (1/7) * 1.0
+        # Summing over the year: total = n_hours * ann / 84
+        # This is not equal to ann because the temporal factors don't exactly
+        # map 1 year to 12 months * 7 days.
+        # But the per-hour rate should be constant.
+        expected_rate = 1000.0 / 84.0
+        @test all(r -> isapprox(r, expected_rate, rtol = 1e-6), result.emission_rate)
+    end
+
     @testset "temporal_allocate multiple sources" begin
         emissions = DataFrame(
             FIPS = ["36001", "36005"],

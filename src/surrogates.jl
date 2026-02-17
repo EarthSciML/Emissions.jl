@@ -46,36 +46,54 @@ end
 Read a data shapefile using GeoDataFrames and generate sparse matrices representing the
 spatial allocation of each region (identified by `attribute`) to grid cells.
 Returns a dictionary mapping attribute values to sparse matrices.
+
+Uses ConservativeRegridding.jl for efficient area-overlap computation via spatial indexing.
 """
 function generate_data_sparse_matrices(
         shapefile_path::AbstractString,
         attribute::AbstractString, grid::GridDef, inputSR::String
     )
-
     df = GeoDataFrames.read(shapefile_path)
     col = find_column_name(df, attribute)
 
-    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
-
-    for row in eachrow(df)
+    # Group geometries by attribute value
+    groups = Dict{String, Vector{Int}}()
+    geoms = []
+    for (i, row) in enumerate(eachrow(df))
         key = string(row[Symbol(col)])
-        geom = row.geometry
+        push!(geoms, row.geometry)
+        if !haskey(groups, key)
+            groups[key] = Int[]
+        end
+        push!(groups[key], i)
+    end
 
-        for j in 1:grid.Ny
-            for i in 1:grid.Nx
-                cell = cell_polygon(grid, (j - 1) * grid.Nx + i)
-                inter = GO.intersection(geom, cell; target = GI.PolygonTrait())
-                if !isempty(inter)
-                    area = sum(GO.area, inter)
-                    if area > 0.0
-                        if !haskey(result, key)
-                            result[key] = spzeros(grid.Ny, grid.Nx)
-                        end
-                        result[key][j, i] += area
-                    end
+    if isempty(geoms)
+        return Dict{String, SparseMatrixCSC{Float64, Int}}()
+    end
+
+    # Build regridder: grid cells (dst) × source polygons (src)
+    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
+    src_verts = [_to_vertex_ring(g) for g in geoms]
+    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
+    areas = regridder.intersections  # dst_cells × src_polygons
+
+    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
+    ncells = grid.Ny * grid.Nx
+
+    for (key, src_indices) in groups
+        mat = spzeros(grid.Ny, grid.Nx)
+        for src_idx in src_indices
+            for cell_idx in 1:ncells
+                a = areas[cell_idx, src_idx]
+                if a > 0.0
+                    j = (cell_idx - 1) ÷ grid.Nx + 1
+                    i = (cell_idx - 1) % grid.Nx + 1
+                    mat[j, i] += a
                 end
             end
         end
+        result[key] = mat
     end
 
     return result
@@ -86,44 +104,79 @@ end
 
 Read a weight shapefile using GeoDataFrames and generate sparse matrices
 of weighted values on the grid.
+
+Uses ConservativeRegridding.jl for efficient area-overlap computation.
 """
 function generate_weight_sparse_matrices(
         shapefile_path::AbstractString,
         weight_columns::Vector{String}, weight_factors::Vector{Float64},
         grid::GridDef, inputSR::String
     )
-
     df = GeoDataFrames.read(shapefile_path)
 
-    result = spzeros(grid.Ny, grid.Nx)
+    # Compute weights per source polygon
+    n_src = nrow(df)
+    weights = zeros(Float64, n_src)
+    geoms = []
 
-    for row in eachrow(df)
-        weight = 0.0
+    for (i, row) in enumerate(eachrow(df))
+        w = 0.0
         for (col, factor) in zip(weight_columns, weight_factors)
             actual_col = find_column_name(df, col)
             val = row[Symbol(actual_col)]
             if !ismissing(val) && val isa Number
-                weight += val * factor
+                w += val * factor
             end
         end
+        weights[i] = w
+        push!(geoms, row.geometry)
+    end
 
-        geom = row.geometry
-        for j in 1:grid.Ny
-            for i in 1:grid.Nx
-                cell = cell_polygon(grid, (j - 1) * grid.Nx + i)
-                inter = GO.intersection(geom, cell; target = GI.PolygonTrait())
-                if !isempty(inter)
-                    area = sum(GO.area, inter)
-                    if area > 0.0
-                        result[j, i] += weight * area
-                    end
-                end
+    if isempty(geoms)
+        return spzeros(grid.Ny, grid.Nx)
+    end
+
+    # Build regridder
+    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
+    src_verts = [_to_vertex_ring(g) for g in geoms]
+    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
+    areas = regridder.intersections  # dst_cells × src_polygons
+
+    result = spzeros(grid.Ny, grid.Nx)
+    ncells = grid.Ny * grid.Nx
+
+    for src_idx in 1:n_src
+        w = weights[src_idx]
+        w == 0.0 && continue
+        for cell_idx in 1:ncells
+            a = areas[cell_idx, src_idx]
+            if a > 0.0
+                j = (cell_idx - 1) ÷ grid.Nx + 1
+                i = (cell_idx - 1) % grid.Nx + 1
+                result[j, i] += w * a
             end
         end
     end
 
     return result
 end
+
+# Keep _cr variants as aliases for backward compatibility
+"""
+    generate_data_sparse_matrices_cr(shapefile_path, attribute, grid, inputSR)
+
+Alias for [`generate_data_sparse_matrices`](@ref). The standard implementation
+now uses ConservativeRegridding.jl by default.
+"""
+const generate_data_sparse_matrices_cr = generate_data_sparse_matrices
+
+"""
+    generate_weight_sparse_matrices_cr(shapefile_path, weight_columns, weight_factors, grid, inputSR)
+
+Alias for [`generate_weight_sparse_matrices`](@ref). The standard implementation
+now uses ConservativeRegridding.jl by default.
+"""
+const generate_weight_sparse_matrices_cr = generate_weight_sparse_matrices
 
 """
     generate_grid_sparse_matrices(grid::GridDef)
@@ -200,126 +253,4 @@ function update_locIndex(
     idx = IndexInfo(Int[], Int[], Float64[], false, false)
     locIndex[fips] = idx
     return idx
-end
-
-"""
-    generate_data_sparse_matrices_cr(shapefile_path, attribute, grid, inputSR)
-
-Generate data sparse matrices using ConservativeRegridding.jl for efficient
-area-overlap computation via spatial indexing.
-
-Same interface as [`generate_data_sparse_matrices`](@ref), but uses
-precomputed intersection area matrices for better performance with large grids.
-"""
-function generate_data_sparse_matrices_cr(
-        shapefile_path::AbstractString,
-        attribute::AbstractString, grid::GridDef, inputSR::String
-    )
-    df = GeoDataFrames.read(shapefile_path)
-    col = find_column_name(df, attribute)
-
-    # Group geometries by attribute value
-    groups = Dict{String, Vector{Int}}()
-    geoms = []
-    for (i, row) in enumerate(eachrow(df))
-        key = string(row[Symbol(col)])
-        push!(geoms, row.geometry)
-        if !haskey(groups, key)
-            groups[key] = Int[]
-        end
-        push!(groups[key], i)
-    end
-
-    if isempty(geoms)
-        return Dict{String, SparseMatrixCSC{Float64, Int}}()
-    end
-
-    # Build regridder: grid cells (dst) × source polygons (src)
-    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
-    src_verts = [_to_vertex_ring(g) for g in geoms]
-    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
-    areas = regridder.intersections  # dst_cells × src_polygons
-
-    result = Dict{String, SparseMatrixCSC{Float64, Int}}()
-    ncells = grid.Ny * grid.Nx
-
-    for (key, src_indices) in groups
-        mat = spzeros(grid.Ny, grid.Nx)
-        for src_idx in src_indices
-            for cell_idx in 1:ncells
-                a = areas[cell_idx, src_idx]
-                if a > 0.0
-                    j = (cell_idx - 1) ÷ grid.Nx + 1
-                    i = (cell_idx - 1) % grid.Nx + 1
-                    mat[j, i] += a
-                end
-            end
-        end
-        result[key] = mat
-    end
-
-    return result
-end
-
-"""
-    generate_weight_sparse_matrices_cr(shapefile_path, weight_columns, weight_factors, grid, inputSR)
-
-Generate weight sparse matrices using ConservativeRegridding.jl for efficient
-area-overlap computation.
-
-Same interface as [`generate_weight_sparse_matrices`](@ref), but uses
-precomputed intersection area matrices for better performance.
-"""
-function generate_weight_sparse_matrices_cr(
-        shapefile_path::AbstractString,
-        weight_columns::Vector{String}, weight_factors::Vector{Float64},
-        grid::GridDef, inputSR::String
-    )
-    df = GeoDataFrames.read(shapefile_path)
-
-    # Compute weights per source polygon
-    n_src = nrow(df)
-    weights = zeros(Float64, n_src)
-    geoms = []
-
-    for (i, row) in enumerate(eachrow(df))
-        w = 0.0
-        for (col, factor) in zip(weight_columns, weight_factors)
-            actual_col = find_column_name(df, col)
-            val = row[Symbol(actual_col)]
-            if !ismissing(val) && val isa Number
-                w += val * factor
-            end
-        end
-        weights[i] = w
-        push!(geoms, row.geometry)
-    end
-
-    if isempty(geoms)
-        return spzeros(grid.Ny, grid.Nx)
-    end
-
-    # Build regridder
-    dst_verts = [_to_vertex_ring(p) for p in grid_polygons(grid)]
-    src_verts = [_to_vertex_ring(g) for g in geoms]
-    regridder = ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
-    areas = regridder.intersections  # dst_cells × src_polygons
-
-    result = spzeros(grid.Ny, grid.Nx)
-    ncells = grid.Ny * grid.Nx
-
-    for src_idx in 1:n_src
-        w = weights[src_idx]
-        w == 0.0 && continue
-        for cell_idx in 1:ncells
-            a = areas[cell_idx, src_idx]
-            if a > 0.0
-                j = (cell_idx - 1) ÷ grid.Nx + 1
-                i = (cell_idx - 1) % grid.Nx + 1
-                result[j, i] += w * a
-            end
-        end
-    end
-
-    return result
 end
