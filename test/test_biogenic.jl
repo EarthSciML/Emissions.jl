@@ -55,6 +55,14 @@ using DataFrames
         γ = temperature_adjustment(303.15, "ISOP")
         @test γ > 0.0
         @test isfinite(γ)
+        # Guenther (1993) normalizes so γ_T ≈ 1.0 at Ts=303.15K
+        # The exact value depends on TM (314K) and other constants.
+        # At Ts, numerator = exp(0) = 1, denominator = 1 + exp(CT2*(Ts-TM)/(R*Ts²))
+        # With CT2=230000, TM=314, R=8.314, Ts=303.15:
+        # arg = 230000*(303.15-314)/(8.314*303.15*303.15) ≈ -3.27
+        # denominator ≈ 1 + exp(-3.27) ≈ 1.038
+        # γ ≈ 1/1.038 ≈ 0.963
+        @test γ ≈ 0.963 atol = 0.01
     end
 
     @testset "temperature_adjustment isoprene increases with temperature" begin
@@ -90,6 +98,30 @@ using DataFrames
         @test γ_isop >= 0.0
         @test γ_terp > 0.0
         @test γ_terp < 1.0
+    end
+
+    @testset "Guenther (1993) constants verification" begin
+        # Verify the constants used in temperature_adjustment match Guenther (1993)
+        # CT1 = 95 kJ/mol activation energy
+        # CT2 = 230 kJ/mol deactivation energy
+        # Ts = 303.15 K standard temperature (30°C)
+        # TM = 314 K optimum temperature for isoprene
+        # R = 8.314 J/mol/K gas constant
+        # β = 0.09 K⁻¹ for terpenes
+
+        # Terpene: γ_T(Ts) should be exactly 1.0 at standard temperature
+        @test temperature_adjustment(303.15, "TERP") ≈ 1.0 rtol = 1e-10
+
+        # Isoprene peaks near TM=314K, not at Ts=303.15K
+        γ_std = temperature_adjustment(303.15, "ISOP")
+        γ_opt = temperature_adjustment(314.0, "ISOP")
+        @test γ_opt > γ_std
+
+        # Light: α=0.0027, CL1=1.066 per Guenther (1993)
+        # At PAR=1000: γ_L = 0.0027 * 1.066 * 1000 / sqrt(1 + 0.0027^2 * 1000^2)
+        # = 2.8782 / sqrt(1 + 7.29) = 2.8782 / sqrt(8.29) ≈ 2.8782 / 2.8793 ≈ 0.9996
+        γ_L = light_adjustment(1000.0)
+        @test γ_L ≈ 1.0 atol = 0.01
     end
 
     @testset "light_adjustment reference conditions" begin

@@ -1,5 +1,5 @@
 export EmissionsDataFrame,
-    SurrogateSpec, GridDef, SpatialProcessor, Config, IndexInfo
+    SurrogateSpec, GridDef, is_regular, SpatialProcessor, Config, IndexInfo
 
 """
     EmissionsDataFrame
@@ -35,6 +35,9 @@ end
 Specifies the grid that we are allocating the emissions to.
 Each cell is described by its bounding box in `Extent`:
 `[(xmin, ymin), (xmax, ymax)]`.
+
+For regular grids (uniform dx, dy), optional fields `Dx`, `Dy`, `X0`, `Y0`
+enable O(1) point-in-cell lookup instead of linear scan.
 """
 struct GridDef
     Name::String
@@ -42,7 +45,28 @@ struct GridDef
     Ny::Int
     SR::String
     Extent::Vector{Vector{Tuple{Float64, Float64}}}
+    Dx::Float64
+    Dy::Float64
+    X0::Float64
+    Y0::Float64
+
+    # Regular grid constructor (with dx, dy, x0, y0)
+    function GridDef(name, nx, ny, sr, extent, dx, dy, x0, y0)
+        return new(name, nx, ny, sr, extent, dx, dy, x0, y0)
+    end
+
+    # Irregular grid constructor (no dx, dy info - uses NaN sentinel)
+    function GridDef(name, nx, ny, sr, extent)
+        return new(name, nx, ny, sr, extent, NaN, NaN, NaN, NaN)
+    end
 end
+
+"""
+    is_regular(grid::GridDef) -> Bool
+
+Check if a grid has regular spacing (uniform dx, dy).
+"""
+is_regular(grid::GridDef) = !isnan(grid.Dx)
 
 """
     SpatialProcessor
@@ -55,7 +79,6 @@ struct SpatialProcessor
     GridRef::DataFrame
     InputSR::String
     MatchFullSCC::Bool
-    MemCacheSize::Int
     MaxMergeDepth::Int
 end
 

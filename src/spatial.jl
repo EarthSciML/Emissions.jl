@@ -1,7 +1,9 @@
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon,
     GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
     cell_bounds, cell_polygon, cell_area,
-    build_regridder, grid_polygons
+    build_regridder, grid_polygons,
+    # snake_case aliases
+    new_polygon, new_grid_irregular, get_index, grid_factors
 
 """
     cell_bounds(grid::GridDef, idx::Int) -> (xmin, xmax, ymin, ymax)
@@ -69,7 +71,7 @@ function NewGridIrregular(
         end
     end
 
-    return GridDef(name, nx, ny, sr, extents)
+    return GridDef(name, nx, ny, sr, extents, dx, dy, x0, y0)
 end
 
 """
@@ -182,6 +184,20 @@ function GetIndex(lon::Float64, lat::Float64, grid::GridDef)
     cols = Int[]
     fracs = Float64[]
 
+    if is_regular(grid)
+        # O(1) arithmetic lookup for regular grids
+        i = floor(Int, (lon - grid.X0) / grid.Dx) + 1
+        j = floor(Int, (lat - grid.Y0) / grid.Dy) + 1
+        if 1 <= i <= grid.Nx && 1 <= j <= grid.Ny
+            push!(rows, j)
+            push!(cols, i)
+            push!(fracs, 1.0)
+            return IndexInfo(rows, cols, fracs, true, true)
+        end
+        return IndexInfo(rows, cols, fracs, false, false)
+    end
+
+    # Fallback: linear scan for irregular grids
     for j in 1:grid.Ny
         for i in 1:grid.Nx
             idx = (j - 1) * grid.Nx + i
@@ -358,3 +374,32 @@ function build_regridder(source_geometries::Vector, grid::GridDef)
     src_verts = [_to_vertex_ring(g) for g in source_geometries]
     return ConservativeRegridding.Regridder(dst_verts, src_verts; normalize = false)
 end
+
+# Snake_case aliases for Julia conventions
+"""
+    new_polygon(coords)
+
+Snake_case alias for [`NewPolygon`](@ref).
+"""
+const new_polygon = NewPolygon
+
+"""
+    new_grid_irregular(args...)
+
+Snake_case alias for [`NewGridIrregular`](@ref).
+"""
+new_grid_irregular(args...; kwargs...) = NewGridIrregular(args...; kwargs...)
+
+"""
+    get_index(args...)
+
+Snake_case alias for [`GetIndex`](@ref).
+"""
+get_index(args...; kwargs...) = GetIndex(args...; kwargs...)
+
+"""
+    grid_factors(grid)
+
+Snake_case alias for [`GridFactors`](@ref).
+"""
+const grid_factors = GridFactors

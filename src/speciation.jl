@@ -150,14 +150,24 @@ function _match_speciation_profile(
         end
     end
 
-    # Level 2: National default FIPS + SCC + pollutant
+    # Level 2: State-level FIPS (first 2 digits + "000") + SCC + pollutant
+    if length(fips) >= 2
+        state_fips = fips[1:2] * "000"
+        for row in eachrow(gsref)
+            if row.FIPS == state_fips && row.SCC == scc && row.pollutant_id == pollutant_up
+                return row.profile_code
+            end
+        end
+    end
+
+    # Level 3: National default FIPS + SCC + pollutant
     for row in eachrow(gsref)
         if row.FIPS == "00000" && row.SCC == scc && row.pollutant_id == pollutant_up
             return row.profile_code
         end
     end
 
-    # Level 3: Pollutant-only (any FIPS, SCC="0000000000")
+    # Level 4: Pollutant-only (any FIPS, SCC="0000000000")
     for row in eachrow(gsref)
         if row.SCC == "0000000000" && row.pollutant_id == pollutant_up
             return row.profile_code

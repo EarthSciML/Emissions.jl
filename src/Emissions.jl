@@ -37,7 +37,7 @@ include("merge.jl")
 export tonperyear, tonpermonth, foot, kelvin, Pollutants
 
 # Data types
-export EmissionsDataFrame, SurrogateSpec, GridDef, SpatialProcessor, Config, IndexInfo
+export EmissionsDataFrame, SurrogateSpec, GridDef, is_regular, SpatialProcessor, Config, IndexInfo
 
 # FF10 data formats
 export FF10NonPointDataFrame, FF10PointDataFrame, FF10NonRoadDataFrame, FF10OnRoadDataFrame
@@ -50,7 +50,8 @@ export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
 export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex,
     recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
     cell_bounds, cell_polygon, cell_area,
-    build_regridder, grid_polygons
+    build_regridder, grid_polygons,
+    new_polygon, new_grid_irregular, get_index, grid_factors
 
 # Surrogate operations
 export generate_data_sparse_matrices, generate_weight_sparse_matrices,

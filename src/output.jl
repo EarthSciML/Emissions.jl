@@ -17,33 +17,33 @@ function format_float(val::Number)
 end
 
 """
-    find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, code::Int)
+    find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, code::Int; region::String="") -> Union{SurrogateSpec, Nothing}
 
-Find a surrogate specification by its code number.
+Find a surrogate specification by its code number, with optional region filtering.
+
+When `region` is non-empty, only matches surrogates with that region.
+When `region` is empty (default), matches any region.
+
 Returns the matching `SurrogateSpec` or `nothing` if not found.
 """
-function find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, code::Int)
+function find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, code::Int; region::String = "")
     for srg in srgSpecs
-        if srg.Code == code
+        if srg.Code == code && (isempty(region) || srg.Region == region)
             return srg
         end
     end
     return nothing
 end
 
+# Keep the two-argument region version for backward compatibility
 """
     find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, region::String, code::Int)
 
 Find a surrogate specification by its region and code number.
-Returns the matching `SurrogateSpec` or `nothing` if not found.
+Backward-compatible method; prefer using the keyword argument version.
 """
 function find_surrogate_by_code(srgSpecs::Vector{SurrogateSpec}, region::String, code::Int)
-    for srg in srgSpecs
-        if srg.Region == region && srg.Code == code
-            return srg
-        end
-    end
-    return nothing
+    return find_surrogate_by_code(srgSpecs, code; region = region)
 end
 
 """

@@ -131,12 +131,13 @@ struct FF10PointDataFrame <: EmissionsDataFrame
         df[!, :SCC] = [lpad(scc, 10, '0') for scc in string.(df[!, :SCC])]
         convert_emissions_units!(df)
 
-        # Convert stack parameters from imperial to SI
-        df.STKHGT = df.STKHGT * foot
-        df.STKDIAM = df.STKDIAM * foot
-        df.STKTEMP = kelvin.(df.STKTEMP)
-        df.STKFLOW = df.STKFLOW * foot * foot * foot / u"s"
-        df.STKVEL = df.STKVEL * foot / u"s"
+        # Convert stack parameters from imperial to SI, stripping Unitful quantities
+        # so downstream code (elevpoint.jl, laypoint.jl) can use plain Float64 values.
+        df.STKHGT = ustrip.(u"m", df.STKHGT * foot)
+        df.STKDIAM = ustrip.(u"m", df.STKDIAM * foot)
+        df.STKTEMP = ustrip.(u"K", kelvin.(df.STKTEMP))
+        df.STKFLOW = ustrip.(u"m^3/s", df.STKFLOW * foot^3 / u"s")
+        df.STKVEL = ustrip.(u"m/s", df.STKVEL * foot / u"s")
 
         return new(df)
     end

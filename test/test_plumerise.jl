@@ -306,6 +306,59 @@ end
     )
 end
 
+@testset "calcDeltaH vs calcDeltaHPrecomputed consistency" begin
+    # Both formulas should agree in the buoyancy-dominated regime
+    # when the temperature difference normalization is equivalent.
+    # calcDeltaH uses: F = g * (Ts - Ta) / Ts * vel * (d/2)^2       (standard Briggs)
+    # calcDeltaHPrecomputed uses: F = g * 2*(Ts-Ta)/(Ts+Ta) * vel * (d/2)^2
+    # These differ by a factor of 2*Ts/(Ts+Ta) which ≈ 1 when Ts ≈ Ta.
+    temperature = [293.15, 293.15, 293.15]
+    windSpeed = [5.0, 5.0, 5.0]
+    sClass = [0.25, 0.25, 0.25]  # unstable
+    s1 = [0.01, 0.01, 0.01]
+    stackHeight = 50.0
+    stackTemp = 400.0  # significant buoyancy
+    stackVel = 5.0     # low velocity so buoyancy dominates
+    stackDiam = 3.0
+
+    dh1 = calcDeltaH(1, temperature, windSpeed, sClass, s1,
+                      stackHeight, stackTemp, stackVel, stackDiam)
+
+    windSpeedMinusOnePointFour = windSpeed .^ (-1.4)
+    windSpeedMinusThird = windSpeed .^ (-1/3)
+    windSpeedInverse = 1.0 ./ windSpeed
+
+    dh2 = calcDeltaHPrecomputed(1, temperature, windSpeed, sClass, s1,
+                                 stackHeight, stackTemp, stackVel, stackDiam,
+                                 windSpeedMinusOnePointFour, windSpeedMinusThird,
+                                 windSpeedInverse)
+
+    # The two formulas use different buoyancy flux normalizations:
+    # calcDeltaH: F1 = g * (Ts-Ta)/Ts * vel * (d/2)^2
+    # calcDeltaHPrecomputed: F2 = g * 2*(Ts-Ta)/(Ts+Ta) * vel * (d/2)^2
+    # Ratio: F1/F2 = (Ts+Ta)/(2*Ts)
+    # So dh1/dh2 = ((Ts+Ta)/(2*Ts))^(1/3) for unstable conditions
+    Ta = temperature[1]
+    Ts = stackTemp
+    expected_ratio = ((Ts + Ta) / (2 * Ts))^(1/3)
+    @test dh1 / dh2 ≈ expected_ratio rtol = 1e-6
+
+    # Both should give positive plume rise
+    @test dh1 > 0.0
+    @test dh2 > 0.0
+
+    # Momentum-dominated case: both use the same formula d*(v^1.4)/(ws^1.4)
+    stackTemp_mom = 300.0  # near ambient, low temp diff
+    stackVel_mom = 20.0    # high velocity
+    dh1_mom = calcDeltaH(1, temperature, windSpeed, sClass, s1,
+                          stackHeight, stackTemp_mom, stackVel_mom, stackDiam)
+    dh2_mom = calcDeltaHPrecomputed(1, temperature, windSpeed, sClass, s1,
+                                     stackHeight, stackTemp_mom, stackVel_mom, stackDiam,
+                                     windSpeedMinusOnePointFour, windSpeedMinusThird,
+                                     windSpeedInverse)
+    @test dh1_mom ≈ dh2_mom rtol = 1e-10
+end
+
 @testset "ASMEPrecomputed tests" begin
     temperature = [80.0, 80.0, 100.0, 20.0, 20.0, 20.0, 20.0]
     windSpeed = [10.0, 10.0, 40.0, 40.0, 40.0, 40.0, 40.0]

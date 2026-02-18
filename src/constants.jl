@@ -41,7 +41,11 @@ const Pollutants = Dict(
     "NOX" => "NOX",
     "NH3" => "NH3",
     "SO2" => "SO2",
+    "CO" => "CO",
     "BRK__PM25-PRI" => "PM25", "EXH__PM25-PRI" => "PM25", "EXH__PM2_5" => "PM25",
     "PM25-PRI" => "PM25", "PM25TOTAL" => "PM25", "PM2_5" => "PM25", "TIR__PM25-PRI" => "PM25",
     "BRK__PM2_5" => "PM25", "TIR__PM2_5" => "PM25",
+    "PM10-PRI" => "PM10", "PM10" => "PM10", "PM10TOTAL" => "PM10",
+    "EXH__PM10-PRI" => "PM10", "BRK__PM10-PRI" => "PM10", "TIR__PM10-PRI" => "PM10",
+    "LEAD" => "LEAD", "7439921" => "LEAD",
 )

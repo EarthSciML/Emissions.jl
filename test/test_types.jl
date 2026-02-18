@@ -52,6 +52,22 @@ import GeometryOps as GO
         @test idx.coveredByGrid == true
     end
 
+    @testset "GridDef regular grid detection" begin
+        # Regular grid created via NewGridIrregular stores dx/dy/x0/y0
+        regular = NewGridIrregular("reg", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        @test Emissions.is_regular(regular)
+        @test regular.Dx == 1.0
+        @test regular.Dy == 1.0
+        @test regular.X0 == 0.0
+        @test regular.Y0 == 0.0
+
+        # Irregular grid created directly without dx/dy
+        irregular = GridDef("irr", 2, 2, "EPSG:4326",
+            [[(0.0,0.0),(1.0,1.0)], [(1.0,0.0),(3.0,1.0)],
+             [(0.0,1.0),(1.0,2.0)], [(1.0,1.0),(3.0,2.0)]])
+        @test !Emissions.is_regular(irregular)
+    end
+
     @testset "SpatialProcessor construction" begin
         srg = SurrogateSpec(
             "US", "Pop", 100, "", "", "", "",
@@ -62,8 +78,8 @@ import GeometryOps as GO
             [[(0.0, 0.0), (1.0, 1.0)]]
         )
         gridRef = DataFrame(SCC = String[], SrgCode = Int[])
-        sp = SpatialProcessor([srg], grid, gridRef, "+proj=longlat", false, 100, 10)
+        sp = SpatialProcessor([srg], grid, gridRef, "+proj=longlat", false, 10)
         @test sp.MatchFullSCC == false
-        @test sp.MemCacheSize == 100
+        @test sp.MaxMergeDepth == 10
     end
 end
