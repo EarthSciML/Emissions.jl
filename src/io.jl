@@ -302,7 +302,7 @@ Each entry is two lines:
 
 The function looks up the requested `grid_name`, resolves its coordinate system,
 converts the IOAPI coordinate type to a Proj4 string, and constructs a `GridDef`
-via [`NewGridIrregular`](@ref).
+via [`NewGridRegular`](@ref).
 
 # Arguments
 - `filepath`: Path to the GRIDDESC file.
@@ -408,7 +408,7 @@ function read_griddesc(filepath::AbstractString, grid_name::AbstractString)
                 cs.P_GAM, cs.XCENT, cs.YCENT
             )
 
-            return NewGridIrregular(
+            return NewGridRegular(
                 grid_name, NCOLS, NROWS, proj4,
                 XCELL, YCELL, XORIG, YORIG
             )

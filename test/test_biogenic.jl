@@ -2,7 +2,7 @@ using DataFrames
 
 @testset "Biogenic tests" begin
     @testset "read_beld" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         tmpfile = tempname()
         open(tmpfile, "w") do io
             println(io, "# BELD land use data")
@@ -20,7 +20,7 @@ using DataFrames
     end
 
     @testset "read_beld skips out of range" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         tmpfile = tempname()
         open(tmpfile, "w") do io
             println(io, "1,Forest,0.5")
@@ -151,7 +151,7 @@ using DataFrames
     end
 
     @testset "compute_biogenic_emissions basic" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         beld_file = tempname()
         open(beld_file, "w") do io
@@ -183,7 +183,7 @@ using DataFrames
     end
 
     @testset "compute_biogenic_emissions correct species" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         beld_file = tempname()
         open(beld_file, "w") do io
@@ -210,7 +210,7 @@ using DataFrames
     end
 
     @testset "compute_biogenic_emissions winter season" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         beld_file = tempname()
         open(beld_file, "w") do io
@@ -238,7 +238,7 @@ using DataFrames
     end
 
     @testset "compute_biogenic_emissions mismatched grid size errors" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         beld_file = tempname()
         open(beld_file, "w") do io
@@ -261,7 +261,7 @@ using DataFrames
     end
 
     @testset "compute_biogenic_emissions empty land use" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         beld_file = tempname()
         open(beld_file, "w") do io

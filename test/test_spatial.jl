@@ -9,8 +9,8 @@ import GeometryOps as GO
         @test GO.area(poly) ≈ 1.0
     end
 
-    @testset "NewGridIrregular" begin
-        grid = NewGridIrregular("test", 3, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+    @testset "NewGridRegular" begin
+        grid = NewGridRegular("test", 3, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         @test grid.Nx == 3
         @test grid.Ny == 2
         @test length(grid.Extent) == 6
@@ -18,7 +18,7 @@ import GeometryOps as GO
     end
 
     @testset "cell_bounds" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         xmin, xmax, ymin, ymax = cell_bounds(grid, 1)
         @test xmin ≈ 0.0
         @test xmax ≈ 1.0
@@ -27,18 +27,18 @@ import GeometryOps as GO
     end
 
     @testset "cell_polygon" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         poly = cell_polygon(grid, 1)
         @test GO.area(poly) ≈ 1.0
     end
 
     @testset "cell_area" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 2.0, 3.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 2.0, 3.0, 0.0, 0.0)
         @test cell_area(grid, 1) ≈ 6.0
     end
 
     @testset "GetIndex point" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Point inside grid
         idx = GetIndex(0.5, 0.5, grid)
@@ -51,7 +51,7 @@ import GeometryOps as GO
     end
 
     @testset "GetIndex polygon" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Polygon covering part of the grid
         poly = NewPolygon([(0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.0, 0.5)])
@@ -61,7 +61,7 @@ import GeometryOps as GO
     end
 
     @testset "GetIndex polygon spanning multiple cells" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Polygon covering exactly cell (1,1) and half of cell (2,1)
         poly = NewPolygon([(0.0, 0.0), (1.5, 0.0), (1.5, 1.0), (0.0, 1.0)])
@@ -73,7 +73,7 @@ import GeometryOps as GO
     end
 
     @testset "recordToGrid" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         idx = IndexInfo([1, 2], [1, 2], [0.6, 0.4], true, true)
         result = recordToGrid(100.0, idx, 2, 2)
         @test result[1, 1] ≈ 60.0
@@ -81,7 +81,7 @@ import GeometryOps as GO
     end
 
     @testset "GridFactors" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         areas = GridFactors(grid)
         @test all(areas .≈ 1.0)
     end

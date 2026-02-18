@@ -36,7 +36,7 @@ using SparseArrays
     end
 
     @testset "writeEmis" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         data = sparse([1, 2], [1, 2], [1.5, 2.5], 2, 2)
 
         tmpfile = tempname() * ".csv"

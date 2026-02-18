@@ -90,7 +90,7 @@ using SparseArrays
 
     @testset "Spatial processing components integration" begin
         # Test grid creation
-        test_grid = NewGridIrregular("TestGrid", 2, 2, "+proj=lcc", 1000.0, 1000.0, 0.0, 0.0)
+        test_grid = NewGridRegular("TestGrid", 2, 2, "+proj=lcc", 1000.0, 1000.0, 0.0, 0.0)
 
         @test test_grid.Name == "TestGrid"
         @test test_grid.Nx == 2
@@ -127,7 +127,7 @@ using SparseArrays
         temp_dir = mktempdir()
 
         # Create test grid for this test set
-        test_grid = NewGridIrregular("TestGrid", 2, 2, "+proj=lcc", 1000.0, 1000.0, 0.0, 0.0)
+        test_grid = NewGridRegular("TestGrid", 2, 2, "+proj=lcc", 1000.0, 1000.0, 0.0, 0.0)
 
         # Write test grid reference file
         test_gridref = DataFrame(

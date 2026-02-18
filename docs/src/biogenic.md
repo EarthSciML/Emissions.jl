@@ -35,7 +35,7 @@ config = BiogenicConfig(
 )
 
 # Define grid and meteorology
-grid = NewGridIrregular("test", 10, 10, "EPSG:4326", 0.5, 0.5, -80.0, 35.0)
+grid = NewGridRegular("test", 10, 10, "EPSG:4326", 0.5, 0.5, -80.0, 35.0)
 temperature = fill(303.15, 100)  # K per grid cell
 par = fill(1000.0, 100)          # μmol/m²/s per grid cell
 

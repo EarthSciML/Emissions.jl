@@ -139,7 +139,7 @@ println("Surrogates assigned: ", count(!ismissing, with_surrogates.Surrogate),
 # Step 5: Create Target Grid
 # =============================================================================
 # Create a simple 4x4 grid (in real use, this would be an InMAP or CMAQ grid)
-grid = NewGridIrregular("CONUS_4x4", 4, 4, "EPSG:4326", 1.0, 1.0, -76.0, 39.0)
+grid = NewGridRegular("CONUS_4x4", 4, 4, "EPSG:4326", 1.0, 1.0, -76.0, 39.0)
 println("Grid: $(grid.Nx) x $(grid.Ny) = $(grid.Nx * grid.Ny) cells")
 ```
 

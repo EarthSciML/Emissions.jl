@@ -27,7 +27,7 @@ The output files follow the IOAPI-3 conventions:
 ```@example ioapi
 using Emissions, Dates
 
-grid = NewGridIrregular("TEST_GRID", 4, 3, "+proj=longlat +datum=WGS84",
+grid = NewGridRegular("TEST_GRID", 4, 3, "+proj=longlat +datum=WGS84",
     1.0, 1.0, -100.0, 30.0)
 
 hours = [DateTime(2019, 7, 1, h) for h in 0:2]

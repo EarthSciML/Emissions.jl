@@ -4,7 +4,7 @@ using Dates
 @testset "IOAPI Output" begin
 
     @testset "Write and read roundtrip" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST_GRID", 4, 3, "+proj=longlat +datum=WGS84",
             1.0, 1.0, -100.0, 30.0
         )
@@ -71,7 +71,7 @@ using Dates
     end
 
     @testset "SDATE and STIME encoding" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST", 2, 2, "+proj=longlat +datum=WGS84",
             1.0, 1.0, 0.0, 0.0
         )
@@ -96,7 +96,7 @@ using Dates
     end
 
     @testset "Multi-layer output" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST", 3, 3, "+proj=longlat +datum=WGS84",
             1.0, 1.0, 0.0, 0.0
         )
@@ -128,7 +128,7 @@ using Dates
     end
 
     @testset "LCC projection attributes" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "LCC_GRID", 10, 10,
             "+proj=lcc +lat_1=33.0 +lat_2=45.0 +lon_0=-97.0 +lat_0=40.0 +datum=WGS84",
             36000.0, 36000.0, -2736000.0, -2088000.0
@@ -158,7 +158,7 @@ using Dates
     end
 
     @testset "VAR-LIST attribute" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST", 2, 2, "+proj=longlat +datum=WGS84",
             1.0, 1.0, 0.0, 0.0
         )
@@ -189,7 +189,7 @@ using Dates
     end
 
     @testset "Convenience DataFrame method" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST", 3, 3, "+proj=longlat +datum=WGS84",
             1.0, 1.0, 0.0, 0.0
         )
@@ -224,7 +224,7 @@ using Dates
     end
 
     @testset "Empty model_data error" begin
-        grid = NewGridIrregular(
+        grid = NewGridRegular(
             "TEST", 2, 2, "+proj=longlat +datum=WGS84",
             1.0, 1.0, 0.0, 0.0
         )

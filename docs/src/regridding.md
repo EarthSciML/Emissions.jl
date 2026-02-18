@@ -23,7 +23,7 @@ using Emissions
 import GeoInterface as GI
 
 # Define grid
-grid = NewGridIrregular("test", 10, 10, "EPSG:4326", 0.5, 0.5, -80.0, 35.0)
+grid = NewGridRegular("test", 10, 10, "EPSG:4326", 0.5, 0.5, -80.0, 35.0)
 
 # Source geometries (e.g., county polygons)
 source_geoms = [...]  # Vector of GeoInterface polygons

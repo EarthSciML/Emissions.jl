@@ -13,7 +13,7 @@ using DataFrames, Dates, SparseArrays
         locIndex = Dict{String, IndexInfo}(
             "36001" => IndexInfo([1], [1], [1.0], true, true)
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 2  # 2 hours
@@ -36,7 +36,7 @@ using DataFrames, Dates, SparseArrays
         locIndex = Dict{String, IndexInfo}(
             "36001" => IndexInfo([1, 1], [1, 2], [0.6, 0.4], true, true)
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 2
@@ -58,7 +58,7 @@ using DataFrames, Dates, SparseArrays
         locIndex = Dict{String, IndexInfo}(
             "36001" => IndexInfo([1], [1], [1.0], true, true)
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 1
@@ -75,7 +75,7 @@ using DataFrames, Dates, SparseArrays
         )
 
         locIndex = Dict{String, IndexInfo}()
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 0
@@ -95,7 +95,7 @@ using DataFrames, Dates, SparseArrays
             "36001" => IndexInfo([1], [1], [1.0], true, true),
             "36005" => IndexInfo([1], [1], [1.0], true, true)
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 1
@@ -117,7 +117,7 @@ using DataFrames, Dates, SparseArrays
         locIndex = Dict{String, IndexInfo}(
             key => IndexInfo([1], [1], [1.0], true, true)
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         result = merge_emissions(hourly, locIndex, grid)
         @test nrow(result) == 1
@@ -205,10 +205,12 @@ using DataFrames, Dates, SparseArrays
             emission_rate = [25.0]
         )
 
-        result = merge_categories_tracked([
-            "area" => df1,
-            "point" => df2
-        ])
+        result = merge_categories_tracked(
+            [
+                "area" => df1,
+                "point" => df2,
+            ]
+        )
         @test nrow(result) == 3
         @test hasproperty(result, :source_category)
         area = filter(r -> r.source_category == "area", result)
@@ -261,7 +263,7 @@ using DataFrames, Dates, SparseArrays
             pollutant = ["NOX", "NOX", "VOC"],
             emission_rate = [100.0, 50.0, 75.0]
         )
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         hours = [DateTime(2019, 7, 1, 0), DateTime(2019, 7, 1, 1)]
 
         result = to_model_ready(merged, grid, hours)
@@ -282,7 +284,7 @@ using DataFrames, Dates, SparseArrays
             layer = [1, 3],
             emission_rate = [100.0, 50.0]
         )
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         hours = [DateTime(2019, 7, 1, 0)]
 
         result = to_model_ready(merged, grid, hours; n_layers = 5)
