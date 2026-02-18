@@ -81,7 +81,7 @@ first(hourly, 5)
 # Merge with spatial allocation
 using SparseArrays
 
-grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 locIndex = Dict{String, IndexInfo}(
     "36001" => IndexInfo([1, 1], [1, 2], [0.6, 0.4], true, true),
     "36005" => IndexInfo([2], [1], [1.0], true, true)

@@ -68,6 +68,7 @@ NewSpatialProcessor
 
 ```@docs
 NewPolygon
+NewGridRegular
 NewGridIrregular
 setupSpatialProcessor
 findCountyPolygon

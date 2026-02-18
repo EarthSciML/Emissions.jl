@@ -81,7 +81,7 @@ using SparseArrays
 
     @testset "generate_data_sparse_matrices" begin
         # Create a small test grid
-        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        test_grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Test error handling with non-existent shapefile
         @test_throws Exception generate_data_sparse_matrices(
@@ -96,7 +96,7 @@ using SparseArrays
 
     @testset "generate_weight_sparse_matrices" begin
         # Create a small test grid
-        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        test_grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Test error handling with non-existent shapefile
         @test_throws Exception generate_weight_sparse_matrices(
@@ -111,7 +111,7 @@ using SparseArrays
 
     @testset "generate_grid_sparse_matrices" begin
         # Create a small test grid
-        test_grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        test_grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Test basic grid matrix generation
         result = generate_grid_sparse_matrices(test_grid)
@@ -121,7 +121,7 @@ using SparseArrays
         @test size(result, 2) >= 1  # At least one column
 
         # Test with single cell grid
-        single_grid = NewGridIrregular("single", 1, 1, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        single_grid = NewGridRegular("single", 1, 1, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         result2 = generate_grid_sparse_matrices(single_grid)
         @test result2 isa SparseArrays.AbstractSparseArray
         @test size(result2, 1) == 1

@@ -17,7 +17,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "compute_grid_indices point source inside grid" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["00001"],
@@ -33,7 +33,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "compute_grid_indices point source outside grid" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["00002"],
@@ -47,7 +47,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "compute_grid_indices area source without shapefile" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(FIPS = ["36001"])
         locIndex = compute_grid_indices(emissions, grid)
@@ -56,7 +56,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "compute_grid_indices deduplication" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["00001", "00001", "00001"],
@@ -69,7 +69,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "compute_grid_indices mixed point and area" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["00001", "36001"],
@@ -131,7 +131,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid single record" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001_0.500000_0.500000" => IndexInfo([1], [1], [1.0], true, true),
@@ -155,7 +155,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid multiple pollutants same cell" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001_0.500000_0.500000" => IndexInfo([1], [1], [1.0], true, true),
@@ -177,7 +177,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid distributes across multiple cells" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001" => IndexInfo([1, 1], [1, 2], [0.6, 0.4], true, true),
@@ -198,7 +198,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid skips unknown pollutants" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001" => IndexInfo([1], [1], [1.0], true, true),
@@ -216,7 +216,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid skips locations outside grid" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001_10.000000_10.000000" => IndexInfo(Int[], Int[], Float64[], false, false),
@@ -236,7 +236,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid with Unitful values" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001_0.500000_0.500000" => IndexInfo([1], [1], [1.0], true, true),
@@ -257,7 +257,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid empty DataFrame" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         locIndex = Dict{String, IndexInfo}()
 
         emissions = DataFrame(
@@ -274,7 +274,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "allocate_emissions_to_grid groups by SCC" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         locIndex = Dict{String, IndexInfo}(
             "00001_0.500000_0.500000" => IndexInfo([1], [1], [1.0], true, true),
@@ -295,7 +295,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "process_emissions_spatial with point sources" begin
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["00001", "00001", "00002"],
@@ -315,7 +315,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "process_emissions_spatial with surrogates" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = ["01001"],
@@ -339,7 +339,7 @@ using DataFrames, SparseArrays, Unitful
     end
 
     @testset "process_emissions_spatial empty input" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         emissions = DataFrame(
             FIPS = String[],
@@ -373,7 +373,7 @@ using DataFrames, SparseArrays, Unitful
         @test "PM25" in filtered.POLID  # PM25-PRI mapped to PM25
 
         # Step 4: Spatially allocate to grid
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         result = process_emissions_spatial(filtered, grid)
 
         # Verify results

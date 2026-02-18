@@ -4,7 +4,7 @@ import GeometryOps as GO
 
 @testset "Regridding tests" begin
     @testset "grid_polygons" begin
-        grid = NewGridIrregular("test", 3, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 3, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
         polys = grid_polygons(grid)
         @test length(polys) == 6  # 3x2 grid
         # First cell should be at (0,0)-(1,1)
@@ -12,7 +12,7 @@ import GeometryOps as GO
     end
 
     @testset "build_regridder" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Source geometry covering the entire grid
         src = [GI.Polygon([[(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0), (0.0, 0.0)]])]
@@ -28,7 +28,7 @@ import GeometryOps as GO
     end
 
     @testset "build_regridder partial overlap" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Source geometry covering only the first cell
         src = [GI.Polygon([[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]])]
@@ -39,7 +39,7 @@ import GeometryOps as GO
     end
 
     @testset "build_regridder multiple sources" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         src = [
             GI.Polygon([[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]]),
@@ -51,7 +51,7 @@ import GeometryOps as GO
     end
 
     @testset "regrid mass conservation" begin
-        grid = NewGridIrregular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular("test", 2, 2, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 
         # Source covering full grid
         src = [GI.Polygon([[(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0), (0.0, 0.0)]])]

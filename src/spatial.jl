@@ -1,9 +1,9 @@
-export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon,
+export NewPolygon, NewGridRegular, NewGridIrregular, setupSpatialProcessor, findCountyPolygon,
     GetIndex, recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
     cell_bounds, cell_polygon, cell_area,
     build_regridder, grid_polygons,
     # snake_case aliases
-    new_polygon, new_grid_irregular, get_index, grid_factors
+    new_polygon, new_grid_regular, new_grid_irregular, get_index, grid_factors
 
 """
     cell_bounds(grid::GridDef, idx::Int) -> (xmin, xmax, ymin, ymax)
@@ -51,11 +51,15 @@ function NewPolygon(coords::Vector{Tuple{Float64, Float64}})
 end
 
 """
-    NewGridIrregular(name, nx, ny, sr, dx, dy, x0, y0)
+    NewGridRegular(name, nx, ny, sr, dx, dy, x0, y0)
 
 Create a `GridDef` with a regular (but potentially projected) grid.
+
+Grid cells are uniformly spaced with `dx` × `dy` cell size, starting from
+origin `(x0, y0)`. The resulting grid has `is_regular(grid) == true`,
+which enables O(1) point-in-cell lookup in [`GetIndex`](@ref).
 """
-function NewGridIrregular(
+function NewGridRegular(
         name::String, nx::Int, ny::Int, sr::String,
         dx::Float64, dy::Float64, x0::Float64, y0::Float64
     )
@@ -142,14 +146,20 @@ function setupSpatialProcessor(config::Config)
     # Create grid from file if it exists, otherwise create a default grid
     if isfile(config.GridFile)
         try
-            grid = NewGridIrregular(config.GridName, config.GridFile, config.InputSR, config.OutputSR)
-        catch e
-            @warn "Failed to read grid file $(config.GridFile): $e. Using default 1x1 grid."
-            grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+            # Try GRIDDESC format first if a grid name is provided
+            grid = read_griddesc(config.GridFile, config.GridName)
+        catch
+            try
+                # Fall back to polygon coordinate file format
+                grid = NewGridIrregular(config.GridName, config.GridFile, config.InputSR, config.OutputSR)
+            catch e
+                @warn "Failed to read grid file $(config.GridFile): $e. Using default 1x1 grid."
+                grid = NewGridRegular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+            end
         end
     else
         @warn "Grid file $(config.GridFile) not found. Using default 1x1 grid."
-        grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+        grid = NewGridRegular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
     end
 
     return NewSpatialProcessor(srgSpecs, grid, gridRef, config.InputSR, false)
@@ -382,6 +392,13 @@ end
 Snake_case alias for [`NewPolygon`](@ref).
 """
 const new_polygon = NewPolygon
+
+"""
+    new_grid_regular(args...)
+
+Snake_case alias for [`NewGridRegular`](@ref).
+"""
+new_grid_regular(args...; kwargs...) = NewGridRegular(args...; kwargs...)
 
 """
     new_grid_irregular(args...)

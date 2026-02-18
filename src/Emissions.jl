@@ -9,6 +9,7 @@ using Dates
 import GeoDataFrames
 import GeoInterface as GI
 import GeometryOps as GO
+import NCDatasets
 using Proj
 using SparseArrays
 using Printf
@@ -33,6 +34,7 @@ include("pipeline.jl")
 include("workflow.jl")
 include("temporal.jl")
 include("merge.jl")
+include("ioapi.jl")
 include("report.jl")
 
 # Export all public functions and types
@@ -51,14 +53,15 @@ export ORLNonPointDataFrame, ORLPointDataFrame, ORLNonRoadDataFrame,
 
 # I/O functions
 export strip_missing, getCountry, normalize_country, read_grid, read_gridref,
-    getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor
+    getShapefilePath, validateShapefile, readSrgSpecSMOKE, NewSpatialProcessor,
+    read_griddesc, write_ioapi
 
 # Spatial processing
-export NewPolygon, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex,
+export NewPolygon, NewGridRegular, NewGridIrregular, setupSpatialProcessor, findCountyPolygon, GetIndex,
     recordToGrid, GridFactors, uniqueCoordinates, uniqueLoc,
     cell_bounds, cell_polygon, cell_area,
     build_regridder, grid_polygons,
-    new_polygon, new_grid_irregular, get_index, grid_factors
+    new_polygon, new_grid_regular, new_grid_irregular, get_index, grid_factors
 
 # Surrogate operations
 export generate_data_sparse_matrices, generate_weight_sparse_matrices,

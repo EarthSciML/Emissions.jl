@@ -237,7 +237,7 @@ A `DataFrame` with gridded emissions, one row per `(cellIndex, SCC)` combination
 
 # Example
 ```julia
-grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
+grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, 0.0, 0.0)
 emissions = DataFrame(
     FIPS=["00001", "00001"], POLID=["NOX", "VOC"],
     SCC=["2103007000", "2103007000"],

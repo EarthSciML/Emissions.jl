@@ -129,7 +129,7 @@ using Dates
 
         # --- Step 3: Spatial indexing ---
         # Use a simple lon/lat grid centered around the point source location
-        grid = NewGridIrregular("test", 3, 3, "EPSG:4326", 1.0, 1.0, -75.0, 39.0)
+        grid = NewGridRegular("test", 3, 3, "EPSG:4326", 1.0, 1.0, -75.0, 39.0)
 
         locIndex = compute_grid_indices(hourly, grid)
 
