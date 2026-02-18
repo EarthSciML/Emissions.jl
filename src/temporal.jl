@@ -469,14 +469,26 @@ function temporal_allocate(
     n_hours = Int(Dates.value(episode_end - episode_start)) ÷ 3_600_000
     hours = [episode_start + Hour(h) for h in 0:(n_hours - 1)]
 
+    # Detect extra columns to carry through
+    extra_cols = Symbol[]
+    for col in [:LONGITUDE, :LATITUDE, :COUNTRY, :Surrogate]
+        if hasproperty(emissions, col)
+            push!(extra_cols, col)
+        end
+    end
+
     if isempty(hours) || nrow(emissions) == 0
-        return DataFrame(
+        result = DataFrame(
             FIPS = String[],
             SCC = String[],
             POLID = String[],
             hour = DateTime[],
             emission_rate = Float64[]
         )
+        for col in extra_cols
+            result[!, col] = Any[]
+        end
+        return result
     end
 
     n_sources = nrow(emissions)
@@ -498,6 +510,7 @@ function temporal_allocate(
     out_polid = Vector{String}(undef, n_total)
     out_hour = Vector{DateTime}(undef, n_total)
     out_rate = Vector{Float64}(undef, n_total)
+    out_extra = Dict{Symbol, Vector{Any}}(col => Vector{Any}(undef, n_total) for col in extra_cols)
 
     idx = 0
     for erow in eachrow(emissions)
@@ -515,6 +528,9 @@ function temporal_allocate(
         # Get profile factors
         monthly_factors = _lookup_profile_cached(profile_cache, "MONTHLY", profile_ids.monthly_id)
         weekly_factors = _lookup_profile_cached(profile_cache, "WEEKLY", profile_ids.weekly_id)
+
+        # Cache extra column values for this source
+        extra_vals = Dict{Symbol, Any}(col => erow[col] for col in extra_cols)
 
         for hr in hours
             local_hr = hr + Hour(tz_offset)
@@ -537,6 +553,9 @@ function temporal_allocate(
                     out_polid[idx] = polid
                     out_hour[idx] = hr
                     out_rate[idx] = hourly_rate
+                    for col in extra_cols
+                        out_extra[col][idx] = extra_vals[col]
+                    end
                     continue
                 end
             end
@@ -556,6 +575,9 @@ function temporal_allocate(
                     out_polid[idx] = polid
                     out_hour[idx] = hr
                     out_rate[idx] = hourly_rate
+                    for col in extra_cols
+                        out_extra[col][idx] = extra_vals[col]
+                    end
                     continue
                 end
             end
@@ -576,14 +598,21 @@ function temporal_allocate(
             out_polid[idx] = polid
             out_hour[idx] = hr
             out_rate[idx] = hourly_rate
+            for col in extra_cols
+                out_extra[col][idx] = extra_vals[col]
+            end
         end
     end
 
-    return DataFrame(
+    result = DataFrame(
         FIPS = out_fips,
         SCC = out_scc,
         POLID = out_polid,
         hour = out_hour,
         emission_rate = out_rate,
     )
+    for col in extra_cols
+        result[!, col] = out_extra[col]
+    end
+    return result
 end

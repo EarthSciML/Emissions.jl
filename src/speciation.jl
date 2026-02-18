@@ -177,6 +177,100 @@ function _match_speciation_profile(
     return nothing
 end
 
+# Cache types for speciation lookups
+const _GsrefKey = Tuple{String, String, String}  # (FIPS, SCC, pollutant_id)
+const _GsrefCache = Dict{_GsrefKey, String}
+
+"""
+    _build_gsref_cache(gsref::DataFrame) -> Dict
+
+Build a Dict-based lookup cache from GSREF DataFrame for O(1) lookup.
+Keys are `(FIPS, SCC, pollutant_id)` tuples.
+"""
+function _build_gsref_cache(gsref::DataFrame)
+    cache = _GsrefCache()
+    for row in eachrow(gsref)
+        key = (row.FIPS, row.SCC, row.pollutant_id)
+        if !haskey(cache, key)
+            cache[key] = row.profile_code
+        end
+    end
+    return cache
+end
+
+"""
+    _match_speciation_profile_cached(cache::Dict, fips::AbstractString,
+        scc::AbstractString, pollutant::AbstractString) -> Union{String, Nothing}
+
+O(1) speciation profile matching using pre-built cache with hierarchical fallback.
+"""
+function _match_speciation_profile_cached(
+        cache::_GsrefCache,
+        fips::AbstractString,
+        scc::AbstractString,
+        pollutant::AbstractString,
+    )
+    pollutant_up = uppercase(pollutant)
+
+    # Level 1: Exact FIPS + SCC + pollutant
+    result = get(cache, (fips, scc, pollutant_up), nothing)
+    result !== nothing && return result
+
+    # Level 2: State-level FIPS (first 2 digits + "000") + SCC + pollutant
+    if length(fips) >= 2
+        state_fips = fips[1:2] * "000"
+        result = get(cache, (state_fips, scc, pollutant_up), nothing)
+        result !== nothing && return result
+    end
+
+    # Level 3: National default FIPS + SCC + pollutant
+    result = get(cache, ("00000", scc, pollutant_up), nothing)
+    result !== nothing && return result
+
+    # Level 4: Pollutant-only (SCC="0000000000") - try with exact FIPS, state, then national
+    result = get(cache, (fips, "0000000000", pollutant_up), nothing)
+    result !== nothing && return result
+
+    if length(fips) >= 2
+        state_fips = fips[1:2] * "000"
+        result = get(cache, (state_fips, "0000000000", pollutant_up), nothing)
+        result !== nothing && return result
+    end
+
+    result = get(cache, ("00000", "0000000000", pollutant_up), nothing)
+    result !== nothing && return result
+
+    return nothing
+end
+
+# GSPRO cache: keyed by (profile_code, pollutant_id), returns vector of (species_id, split_factor, divisor, mass_fraction)
+const _GsproEntry = NamedTuple{(:species_id, :split_factor, :divisor, :mass_fraction), Tuple{String, Float64, Float64, Float64}}
+const _GsproKey = Tuple{String, String}  # (profile_code, pollutant_id)
+const _GsproCache = Dict{_GsproKey, Vector{_GsproEntry}}
+
+"""
+    _build_gspro_cache(gspro::DataFrame) -> Dict
+
+Build a Dict-based lookup cache from GSPRO DataFrame for O(1) lookup.
+Keys are `(profile_code, pollutant_id)` tuples.
+"""
+function _build_gspro_cache(gspro::DataFrame)
+    cache = _GsproCache()
+    for row in eachrow(gspro)
+        key = (row.profile_code, row.pollutant_id)
+        entry = (
+            species_id = row.species_id, split_factor = row.split_factor,
+            divisor = row.divisor, mass_fraction = row.mass_fraction,
+        )
+        if haskey(cache, key)
+            push!(cache[key], entry)
+        else
+            cache[key] = [entry]
+        end
+    end
+    return cache
+end
+
 """
     build_speciation_matrix(emissions::DataFrame, gspro::DataFrame, gsref::DataFrame;
         basis::Symbol=:mass) -> (Matrix{Float64}, Vector{String}, Vector{Int})
@@ -259,7 +353,7 @@ end
 Apply chemical speciation to convert inventory pollutants into model species.
 
 For each emissions record, looks up the speciation profile via GSREF and applies
-the speciation factors from GSPRO. The output has `:species` instead of `:POLID`,
+the speciation factors from GSPRO. The output has `:POLID` replaced with model species names,
 with `ANN_VALUE` split according to speciation factors.
 
 # Arguments
@@ -270,12 +364,12 @@ with `ANN_VALUE` split according to speciation factors.
 - `basis::Symbol=:mass`: `:mass` uses `mass_fraction`, `:mole` uses `split_factor/divisor`.
 
 # Returns
-A `DataFrame` with the same columns as input but `:POLID` replaced by `:species`,
-and `:ANN_VALUE` scaled by the speciation factor. Each input row may produce
-multiple output rows (one per model species).
+A `DataFrame` with the same columns as input, with `:POLID` values replaced by
+model species names and `:ANN_VALUE` scaled by the speciation factor. Each input
+row may produce multiple output rows (one per model species).
 
 Records with no matching speciation profile are passed through with
-`:species` set to the original `:POLID` and `:ANN_VALUE` unchanged.
+`:POLID` set to the original pollutant name and `:ANN_VALUE` unchanged.
 """
 function speciate_emissions(
         emissions::DataFrame,
@@ -291,27 +385,30 @@ function speciate_emissions(
         end
     end
 
+    # Build caches for O(1) lookups
+    gsref_cache = _build_gsref_cache(gsref)
+    gspro_cache = _build_gspro_cache(gspro)
+
     # Pre-allocate result column vectors
     out_fips = String[]
     out_scc = String[]
-    out_species = String[]
+    out_polid = String[]
     out_ann = Float64[]
     out_extra = Dict{Symbol, Vector{Any}}(col => Any[] for col in extra_cols)
 
     for erow in eachrow(emissions)
         fips = string(erow.FIPS)
-        scc_raw = string(erow.SCC)
-        scc = lpad(scc_raw, 10, '0')
+        scc = lpad(string(erow.SCC), 10, '0')
         polid = uppercase(string(erow.POLID))
         ann_value = Float64(erow.ANN_VALUE isa Number ? erow.ANN_VALUE : ustrip(erow.ANN_VALUE))
 
-        profile_code = _match_speciation_profile(gsref, fips, scc, polid)
+        profile_code = _match_speciation_profile_cached(gsref_cache, fips, scc, polid)
 
         if profile_code === nothing
             # Pass through unmatched records
             push!(out_fips, fips)
-            push!(out_scc, scc_raw)
-            push!(out_species, polid)
+            push!(out_scc, scc)
+            push!(out_polid, polid)
             push!(out_ann, ann_value)
             for col in extra_cols
                 push!(out_extra[col], erow[col])
@@ -319,32 +416,29 @@ function speciate_emissions(
             continue
         end
 
-        # Find matching entries in GSPRO
-        speciated = false
-        for prow in eachrow(gspro)
-            if prow.profile_code == profile_code && prow.pollutant_id == polid
+        # Find matching entries in GSPRO using cache
+        entries = get(gspro_cache, (profile_code, polid), nothing)
+        if entries !== nothing && !isempty(entries)
+            for entry in entries
                 if basis == :mole
-                    factor = prow.divisor != 0.0 ? prow.split_factor / prow.divisor : 0.0
+                    factor = entry.divisor != 0.0 ? entry.split_factor / entry.divisor : 0.0
                 else
-                    factor = prow.mass_fraction
+                    factor = entry.mass_fraction
                 end
 
                 push!(out_fips, fips)
-                push!(out_scc, scc_raw)
-                push!(out_species, prow.species_id)
+                push!(out_scc, scc)
+                push!(out_polid, entry.species_id)
                 push!(out_ann, ann_value * factor)
                 for col in extra_cols
                     push!(out_extra[col], erow[col])
                 end
-                speciated = true
             end
-        end
-
-        if !speciated
+        else
             # Profile code found but no entries in GSPRO - pass through
             push!(out_fips, fips)
-            push!(out_scc, scc_raw)
-            push!(out_species, polid)
+            push!(out_scc, scc)
+            push!(out_polid, polid)
             push!(out_ann, ann_value)
             for col in extra_cols
                 push!(out_extra[col], erow[col])
@@ -355,7 +449,7 @@ function speciate_emissions(
     result = DataFrame(
         FIPS = out_fips,
         SCC = out_scc,
-        species = out_species,
+        POLID = out_polid,
         ANN_VALUE = out_ann,
     )
     for col in extra_cols

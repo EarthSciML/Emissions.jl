@@ -199,27 +199,26 @@ using DataFrames
         )
 
         result = speciate_emissions(emissions, gspro, gsref; basis = :mass)
-        @test hasproperty(result, :species)
-        @test !hasproperty(result, :POLID)
+        @test hasproperty(result, :POLID)
         @test nrow(result) == 4  # 2 species for VOC + 2 species for NOX
 
         # Check VOC -> FORM
-        form_rows = filter(r -> r.species == "FORM", result)
+        form_rows = filter(r -> r.POLID == "FORM", result)
         @test nrow(form_rows) == 1
         @test form_rows[1, :ANN_VALUE] ≈ 100.0 * 0.03
 
         # Check VOC -> ALD2
-        ald2_rows = filter(r -> r.species == "ALD2", result)
+        ald2_rows = filter(r -> r.POLID == "ALD2", result)
         @test nrow(ald2_rows) == 1
         @test ald2_rows[1, :ANN_VALUE] ≈ 100.0 * 0.02
 
         # Check NOX -> NO
-        no_rows = filter(r -> r.species == "NO", result)
+        no_rows = filter(r -> r.POLID == "NO", result)
         @test nrow(no_rows) == 1
         @test no_rows[1, :ANN_VALUE] ≈ 50.0 * 0.9
 
         # Check NOX -> NO2
-        no2_rows = filter(r -> r.species == "NO2", result)
+        no2_rows = filter(r -> r.POLID == "NO2", result)
         @test nrow(no2_rows) == 1
         @test no2_rows[1, :ANN_VALUE] ≈ 50.0 * 0.1
     end
@@ -247,7 +246,7 @@ using DataFrames
         )
 
         result = speciate_emissions(emissions, gspro, gsref; basis = :mole)
-        no_rows = filter(r -> r.species == "NO", result)
+        no_rows = filter(r -> r.POLID == "NO", result)
         @test no_rows[1, :ANN_VALUE] ≈ 100.0 * 0.9 / 2.0
     end
 
@@ -309,7 +308,7 @@ using DataFrames
 
         result = speciate_emissions(emissions, gspro, gsref)
         @test nrow(result) == 1
-        @test result[1, :species] == "CO"
+        @test result[1, :POLID] == "CO"
         @test result[1, :ANN_VALUE] ≈ 25.0
     end
 
@@ -337,7 +336,7 @@ using DataFrames
 
         result = speciate_emissions(emissions, gspro, gsref)
         @test nrow(result) == 0
-        @test hasproperty(result, :species)
+        @test hasproperty(result, :POLID)
     end
 
     @testset "speciate_emissions mass conservation" begin
@@ -394,12 +393,12 @@ using DataFrames
         @test nrow(result) == 4  # 2 sources * 2 species
 
         # Check county 36001 FORM
-        form_36001 = filter(r -> r.species == "FORM" && r.FIPS == "36001", result)
+        form_36001 = filter(r -> r.POLID == "FORM" && r.FIPS == "36001", result)
         @test nrow(form_36001) == 1
         @test form_36001[1, :ANN_VALUE] ≈ 100.0 * 0.6
 
         # Check county 36005 ALD2
-        ald2_36005 = filter(r -> r.species == "ALD2" && r.FIPS == "36005", result)
+        ald2_36005 = filter(r -> r.POLID == "ALD2" && r.FIPS == "36005", result)
         @test nrow(ald2_36005) == 1
         @test ald2_36005[1, :ANN_VALUE] ≈ 200.0 * 0.4
     end

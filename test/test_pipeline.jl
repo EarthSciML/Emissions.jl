@@ -276,7 +276,7 @@ using DataFrames, CSV, Unitful, Emissions
             Surrogate = [100]
         )
         result = assign_surrogates(emissions, gridref)
-        @test ismissing(result[1, :Surrogate])
+        @test result[1, :Surrogate] == 0  # Unmatched records default to 0
     end
 
     @testset "build_data_weight_map" begin
@@ -289,12 +289,18 @@ using DataFrames, CSV, Unitful, Emissions
             Surrogate = [100, 200]
         )
         srgSpecs = [
-            SurrogateSpec("USA", "Pop", 100, "/data/pop.shp", "POP",
-                "/weight/pop_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]),
-            SurrogateSpec("USA", "Area", 200, "/data/area.shp", "AREA",
-                "/weight/area_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]),
-            SurrogateSpec("USA", "Unused", 999, "/data/unused.shp", "UNUSED",
-                "/weight/unused_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]),
+            SurrogateSpec(
+                "USA", "Pop", 100, "/data/pop.shp", "POP",
+                "/weight/pop_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]
+            ),
+            SurrogateSpec(
+                "USA", "Area", 200, "/data/area.shp", "AREA",
+                "/weight/area_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]
+            ),
+            SurrogateSpec(
+                "USA", "Unused", 999, "/data/unused.shp", "UNUSED",
+                "/weight/unused_weight.shp", "", String[], String[], Float64[], "", String[], Float64[]
+            ),
         ]
         result = build_data_weight_map(emissions, srgSpecs)
         @test length(result) == 2
@@ -334,12 +340,18 @@ using DataFrames, CSV, Unitful, Emissions
 
     @testset "find_surrogate_by_code with region" begin
         srgs = [
-            SurrogateSpec("USA", "Pop", 100, "", "", "", "",
-                String[], String[], Float64[], "", String[], Float64[]),
-            SurrogateSpec("Canada", "Pop", 100, "", "", "", "",
-                String[], String[], Float64[], "", String[], Float64[]),
-            SurrogateSpec("USA", "Area", 200, "", "", "", "",
-                String[], String[], Float64[], "", String[], Float64[]),
+            SurrogateSpec(
+                "USA", "Pop", 100, "", "", "", "",
+                String[], String[], Float64[], "", String[], Float64[]
+            ),
+            SurrogateSpec(
+                "Canada", "Pop", 100, "", "", "", "",
+                String[], String[], Float64[], "", String[], Float64[]
+            ),
+            SurrogateSpec(
+                "USA", "Area", 200, "", "", "", "",
+                String[], String[], Float64[], "", String[], Float64[]
+            ),
         ]
         @test find_surrogate_by_code(srgs, "USA", 100).Region == "USA"
         @test find_surrogate_by_code(srgs, "Canada", 100).Region == "Canada"
