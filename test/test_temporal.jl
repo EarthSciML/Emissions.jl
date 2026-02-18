@@ -148,12 +148,10 @@ using DataFrames, Dates, Unitful
         @test nrow(result) == 3  # 3 hours
         @test all(result.POLID .== "NOX")
         @test all(result.FIPS .== "36001")
-        # With uniform profiles: rate = 100 * (1/12) * (1/7) * (1/24 * 24) = 100/84
-        # Actually: rate = ann * mf * (wf/7) * (df * 24)
+        # With uniform profiles: rate = ann * (mf*12) * wf * (df*24)
         # With uniform: mf=1/12, wf=1.0, df=1/24
-        # rate = 100 * (1/12) * (1/7) * (1/24 * 24) = 100 * (1/12) * (1/7) * 1.0
-        # = 100 / 84 ≈ 1.190476
-        expected_rate = 100.0 / 84.0
+        # rate = 100 * (1/12 * 12) * 1.0 * (1/24 * 24) = 100 * 1 * 1 * 1 = 100.0
+        expected_rate = 100.0
         @test all(r -> isapprox(r, expected_rate, rtol = 1.0e-6), result.emission_rate)
     end
 
@@ -186,10 +184,10 @@ using DataFrames, Dates, Unitful
         result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end)
         @test nrow(result) == 168  # 7 * 24 hours
 
-        # With uniform profiles, each hour gets ann/84, and a week has 168 hours
-        # Total = 168 * (1/84) = 2.0
+        # With uniform profiles, each hour gets ann * 1.0, and a week has 168 hours
+        # Total = 168 * 1.0 = 168.0
         total = sum(result.emission_rate)
-        @test total ≈ 168.0 / 84.0 rtol = 1.0e-6
+        @test total ≈ 168.0 rtol = 1.0e-6
     end
 
     @testset "temporal_allocate empty emissions" begin
@@ -242,7 +240,8 @@ using DataFrames, Dates, Unitful
             DateTime(2019, 7, 1, 0), DateTime(2019, 7, 1, 1)
         )
         @test nrow(result) == 1
-        @test result[1, :emission_rate] ≈ 1.0e-3 / 84.0 rtol = 1.0e-6
+        # With uniform profiles, hourly rate = annual rate
+        @test result[1, :emission_rate] ≈ 1.0e-3 rtol = 1.0e-6
     end
 
     @testset "temporal_allocate per-FIPS timezone" begin
@@ -365,12 +364,9 @@ using DataFrames, Dates, Unitful
         result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end)
         @test nrow(result) == n_hours
 
-        # With uniform profiles: each hour gets ann * (1/12) * (1/7) * 1.0
-        # Summing over the year: total = n_hours * ann / 84
-        # This is not equal to ann because the temporal factors don't exactly
-        # map 1 year to 12 months * 7 days.
-        # But the per-hour rate should be constant.
-        expected_rate = 1000.0 / 84.0
+        # With uniform profiles: each hour gets ann * (1/12*12) * 1.0 * (1/24*24) = ann
+        # The per-hour rate should be constant and equal to the annual rate.
+        expected_rate = 1000.0
         @test all(r -> isapprox(r, expected_rate, rtol = 1e-6), result.emission_rate)
     end
 

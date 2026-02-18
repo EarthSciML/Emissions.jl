@@ -113,8 +113,8 @@ using Dates
         hourly_area = filter(r -> r.FIPS == "36005", hourly)
         @test all(r -> ismissing(r.LONGITUDE), eachrow(hourly_area))
 
-        # Mass conservation: with uniform profiles, rate = ann / 84
-        expected_rate_factor = 1.0 / 84.0
+        # With uniform profiles, hourly rate = annual rate (rate factor = 1.0)
+        expected_rate_factor = 1.0
         for polid in unique(hourly.POLID)
             pol_speciated = filter(r -> r.POLID == polid, speciated)
             pol_hourly = filter(r -> r.POLID == polid, hourly)
