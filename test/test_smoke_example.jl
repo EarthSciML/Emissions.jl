@@ -539,11 +539,12 @@ function parse_atref_gentpro(filepath::AbstractString)
         profile_id = replace(strip(parts[9]), '"' => "")
 
         isempty(scc) && continue
-        isempty(fips_raw) && continue
         isempty(profile_type) && continue
 
-        # Normalize FIPS: strip country digit if 6 digits
-        if length(fips_raw) == 6
+        # Normalize FIPS: empty means national default "00000"
+        if isempty(fips_raw)
+            fips = "00000"
+        elseif length(fips_raw) == 6
             fips = lpad(fips_raw[2:end], 5, '0')
         else
             fips = lpad(fips_raw, 5, '0')
@@ -592,16 +593,53 @@ end
 # Helper: Build pollutant name mapping for GSREF/GSPRO compatibility
 # ============================================================================
 """
-Rename emissions POLID to match GSREF/GSPRO naming conventions.
-- "PM25" -> "PM2_5" (matches GSREF/GSPRO naming)
-- "PM10" -> "PMC" (matches GSREF/GSPRO naming for coarse PM)
+Prepare emissions for speciation by fixing pollutant names and computing PMC.
+
+1. Rename "PM25" → "PM2_5" (matches GSREF/GSPRO naming)
+2. Compute "PMC" = PM10 - PM25 per (FIPS, SCC) (coarse PM, matches SMOKE's SMKINVEN_FORMULA)
+3. Remove original PM10 rows (replaced by PMC)
 """
-function rename_emissions_for_speciation!(emissions::DataFrame)
-    mapping = Dict(
-        "PM25" => "PM2_5",
-        "PM10" => "PMC",
-    )
-    emissions.POLID = [get(mapping, string(p), string(p)) for p in emissions.POLID]
+function prepare_emissions_for_speciation!(emissions::DataFrame)
+    # Ensure string POLID for matching
+    emissions.POLID = string.(emissions.POLID)
+
+    # Step 1: Compute PMC = PM10 - PM25 per (FIPS, SCC)
+    # This matches SMOKE's SMKINVEN_FORMULA = "PMC=PM10-PM2_5"
+    pm10_idx = findall(r -> r.POLID == "PM10", eachrow(emissions))
+    pm25_map = Dict{Tuple{String, String}, Float64}()
+    for row in eachrow(emissions)
+        if row.POLID == "PM25"
+            key = (string(row.FIPS), string(row.SCC))
+            pm25_map[key] = get(pm25_map, key, 0.0) + Float64(row.ANN_VALUE)
+        end
+    end
+
+    pmc_rows = similar(emissions, 0)
+    for idx in pm10_idx
+        row = emissions[idx, :]
+        key = (string(row.FIPS), string(row.SCC))
+        pm25_val = get(pm25_map, key, 0.0)
+        pmc_value = Float64(row.ANN_VALUE) - pm25_val
+        if pmc_value > 0
+            new_row = copy(emissions[idx:idx, :])
+            new_row[1, :POLID] = "PMC"
+            new_row[1, :ANN_VALUE] = pmc_value
+            append!(pmc_rows, new_row)
+        end
+    end
+
+    # Step 2: Remove PM10 rows (now replaced by PMC)
+    filter!(r -> r.POLID != "PM10", emissions)
+
+    # Step 3: Add PMC rows
+    if nrow(pmc_rows) > 0
+        append!(emissions, pmc_rows)
+        @info "Computed $(nrow(pmc_rows)) PMC rows from PM10 - PM25"
+    end
+
+    # Step 4: Rename PM25 → PM2_5
+    emissions.POLID = [p == "PM25" ? "PM2_5" : p for p in emissions.POLID]
+
     return emissions
 end
 
@@ -614,6 +652,172 @@ function normalize_gsref_pollutants!(gsref::DataFrame)
     mapping = Dict("NONHAPVOC" => "VOC")
     gsref.pollutant_id = [get(mapping, uppercase(p), uppercase(p)) for p in gsref.pollutant_id]
     return gsref
+end
+
+# ============================================================================
+# Helper: Parse SMOKE weekly profile file (amptpro format)
+# ============================================================================
+"""
+Parse SMOKE amptpro weekly (day-of-week) profile file.
+Format: "profile_id", mon, tue, wed, thu, fri, sat, sun, "comment"
+Returns Dict{String, Vector{Float64}} mapping profile_id to 7 day-of-week weights.
+Weights are returned in temporal_allocate convention (uniform = 1.0 per day, sum = 7.0).
+"""
+function parse_amptpro_weekly(filepath::AbstractString)
+    result = Dict{String, Vector{Float64}}()
+    for line in readlines(filepath)
+        line = strip(line)
+        (isempty(line) || startswith(line, "#") || startswith(line, "profile_id")) && continue
+
+        parts = split(line, ',')
+        length(parts) >= 8 || continue
+
+        profile_id = replace(strip(parts[1]), '"' => "")
+        isempty(profile_id) && continue
+
+        factors = Float64[]
+        for i in 2:8
+            s = strip(parts[i])
+            push!(factors, isempty(s) ? 0.0 : parse(Float64, s))
+        end
+
+        # Convert fractions (sum≈1) to weights (sum≈7) if needed
+        s = sum(factors)
+        if s > 0 && s < 2.0  # likely fractions summing to ~1.0
+            factors .*= 7.0
+        end
+        result[profile_id] = factors
+    end
+    return result
+end
+
+# ============================================================================
+# Helper: Build temporal_allocate-compatible profiles/xref from Gentpro data
+# ============================================================================
+"""
+Convert Gentpro FIPS-specific temporal profiles and ATREF cross-reference
+into the profiles and xref DataFrames expected by `temporal_allocate`.
+
+This handles two distinct temporal patterns:
+1. Most RWC SCCs: FIPS-specific monthly + daily profiles, diurnal profile 600
+2. Hydronic heater SCCs (2104008610-630): static monthly profile, weekly profile 7, diurnal 1500
+
+Gentpro daily fractions (day-of-month) are converted to weekly weights via:
+  weekly_weight = daily_fraction × days_in_month
+which gives weight=1.0 for uniform daily distribution.
+"""
+function build_gentpro_temporal(
+    atref::Dict{Tuple{String,String}, Dict{String,String}},
+    gentpro_monthly::Dict{String, Vector{Float64}},
+    gentpro_daily::Dict{Tuple{String,Int}, Vector{Float64}},
+    hourly_profiles::Dict{String, Vector{Float64}},
+    weekly_profiles::Dict{String, Vector{Float64}},
+    emissions_fips_scc::Set{Tuple{String,String}},
+    target_date::Date)
+
+    month_idx = Dates.month(target_date)
+    day_idx = Dates.day(target_date)
+    n_days = Dates.daysinmonth(target_date)
+
+    # Map string profile IDs to integers (reserve 1 for defaults)
+    str_to_int = Dict{String, Int}()
+    next_id = Ref(2)
+    function get_or_create_id(key::String)
+        return get!(str_to_int, key) do
+            id = next_id[]
+            next_id[] += 1
+            id
+        end
+    end
+
+    # Track added profiles to avoid duplicates
+    added_profiles = Set{Tuple{String, Int}}()
+    profiles_rows = NamedTuple{(:profile_type, :profile_id, :factors), Tuple{String, Int, Vector{Float64}}}[]
+    xref_rows = NamedTuple{(:FIPS, :SCC, :monthly_id, :weekly_id, :diurnal_id), Tuple{String, String, Int, Int, Int}}[]
+
+    function add_profile!(ptype, pid, factors)
+        key = (ptype, pid)
+        if key ∉ added_profiles
+            push!(added_profiles, key)
+            push!(profiles_rows, (profile_type=ptype, profile_id=pid, factors=factors))
+        end
+    end
+
+    # Add defaults (ID=1)
+    add_profile!("MONTHLY", 1, fill(1.0 / 12.0, 12))
+    add_profile!("WEEKLY", 1, fill(1.0, 7))
+    add_profile!("ALLDAY", 1, fill(1.0 / 24.0, 24))
+
+    n_matched = 0
+    n_unmatched = 0
+
+    for (fips, scc) in emissions_fips_scc
+        scc_padded = lpad(scc, 10, '0')
+
+        # Look up ATREF: exact (SCC, FIPS) match first
+        prof_info = get(atref, (scc_padded, fips), nothing)
+
+        # Fallback: try any FIPS for this SCC (national default)
+        if prof_info === nothing
+            for (key, val) in atref
+                if key[1] == scc_padded
+                    prof_info = val
+                    break
+                end
+            end
+        end
+
+        monthly_id = 1  # default
+        weekly_id = 1   # default
+        diurnal_id = 1  # default
+
+        if prof_info !== nothing
+            n_matched += 1
+
+            # Monthly profile
+            mon_str = get(prof_info, "MONTHLY", nothing)
+            if mon_str !== nothing && haskey(gentpro_monthly, mon_str)
+                monthly_id = get_or_create_id("monthly_$mon_str")
+                add_profile!("MONTHLY", monthly_id, gentpro_monthly[mon_str])
+            end
+
+            # Daily → weekly conversion, or weekly profile directly
+            day_str = get(prof_info, "DAILY", nothing)
+            wk_str = get(prof_info, "WEEKLY", nothing)
+
+            if day_str !== nothing && haskey(gentpro_daily, (day_str, month_idx))
+                # Convert Gentpro daily fraction to weekly weight
+                daily_facs = gentpro_daily[(day_str, month_idx)]
+                daily_frac = day_idx <= length(daily_facs) ? daily_facs[day_idx] : 0.0
+                weekly_weight = daily_frac * n_days
+                weekly_id = get_or_create_id("daily_$(day_str)_$(month_idx)_$(day_idx)")
+                # Fill all DOW slots with same weight (only 1 day simulated)
+                add_profile!("WEEKLY", weekly_id, fill(weekly_weight, 7))
+            elseif wk_str !== nothing && haskey(weekly_profiles, wk_str)
+                weekly_id = get_or_create_id("weekly_$wk_str")
+                add_profile!("WEEKLY", weekly_id, weekly_profiles[wk_str])
+            end
+
+            # Diurnal profile
+            allday_str = get(prof_info, "ALLDAY", nothing)
+            if allday_str !== nothing && haskey(hourly_profiles, allday_str)
+                diurnal_id = get_or_create_id("allday_$allday_str")
+                add_profile!("ALLDAY", diurnal_id, hourly_profiles[allday_str])
+            end
+        else
+            n_unmatched += 1
+        end
+
+        push!(xref_rows, (FIPS=fips, SCC=scc_padded,
+                          monthly_id=monthly_id, weekly_id=weekly_id, diurnal_id=diurnal_id))
+    end
+
+    @info "Gentpro temporal: matched $n_matched (FIPS,SCC) pairs in ATREF, $n_unmatched unmatched"
+
+    profiles = DataFrame(profiles_rows)
+    xref = DataFrame(xref_rows)
+
+    return profiles, xref
 end
 
 """
@@ -701,13 +905,15 @@ end
         "tpro_daily_Gentpro_RWC_2018gc_18j_23sep2021_nf_v1")
     hourly_file = joinpath(SMOKE_BASE, "ge_dat", "temporal",
         "amptpro_general_2011platform_tpro_hourly_6nov2014_18apr2022_v11")
+    weekly_file = joinpath(SMOKE_BASE, "ge_dat", "temporal",
+        "amptpro_general_2011platform_tpro_weekly_6nov2014_09sep2016_v2")
     atref_file = joinpath(SMOKE_BASE, "ge_dat", "temporal",
         "atref_2017platform_rwc_29apr2020_v1")
 
     @testset "Required files exist" begin
         for f in [inv_file, griddesc_file, agref_file, srg_file, gspro_file,
-                  gsref_file, monthly_file, daily_file, hourly_file, atref_file,
-                  ref_file]
+                  gsref_file, monthly_file, daily_file, hourly_file, weekly_file,
+                  atref_file, ref_file]
             @test isfile(f)
         end
     end
@@ -836,8 +1042,42 @@ end
             break
         end
 
+        # RWC-specific diurnal profiles should exist
+        @test haskey(hourly, "600")   # Standard RWC diurnal
+        @test haskey(hourly, "1500")  # Hydronic heater diurnal
+
+        # Profile 600 should have evening peak (hours 18-23 > midday hours)
+        p600 = hourly["600"]
+        evening_avg = mean(p600[19:24])  # hours 18-23 (1-indexed)
+        midday_avg = mean(p600[11:15])   # hours 10-14
+        @test evening_avg > midday_avg
+
+        weekly = parse_amptpro_weekly(weekly_file)
+        @test !isempty(weekly)
+        @test haskey(weekly, "7")  # Hydronic heater weekly profile
+        # Profile 7 should be approximately uniform (each day ≈ 1.0 weight)
+        p7 = weekly["7"]
+        @test length(p7) == 7
+        @test sum(p7) ≈ 7.0 atol = 0.1
+
         atref = parse_atref_gentpro(atref_file)
         @test !isempty(atref)
+
+        # Verify ATREF assigns different profiles for different SCC types
+        # Standard RWC SCCs should get ALLDAY=600, hydronic heaters should get ALLDAY=1500
+        has_600 = false
+        has_1500 = false
+        for ((scc, fips), info) in atref
+            allday = get(info, "ALLDAY", "")
+            if allday == "600"
+                has_600 = true
+            elseif allday == "1500"
+                has_1500 = true
+            end
+            has_600 && has_1500 && break
+        end
+        @test has_600   # Standard RWC SCCs use diurnal profile 600
+        @test has_1500  # Hydronic heater SCCs use diurnal profile 1500
     end
 
     # ========================================================================
@@ -866,8 +1106,8 @@ end
         @test nrow(emissions) > 0
         @info "Emissions after filtering: $(nrow(emissions)) rows, POLIDs: $(unique(emissions.POLID))"
 
-        # Rename emissions POLID to match GSREF/GSPRO naming (PM25→PM2_5, PM10→PMC)
-        rename_emissions_for_speciation!(emissions)
+        # Prepare emissions for speciation: compute PMC = PM10 - PM25, rename PM25→PM2_5
+        prepare_emissions_for_speciation!(emissions)
 
         # --- Step 3: Read and adapt speciation files ---
         gspro = read_gspro(gspro_file)
@@ -891,8 +1131,10 @@ end
         @info "GSPRO: $(nrow(gspro)) entries, GSREF: $(nrow(gsref)) entries"
 
         # --- Step 4: Speciation ---
-        # Use mass basis; we convert to appropriate units when comparing to reference
-        speciated = speciate_emissions(emissions, gspro, gsref; basis = :mass)
+        # Use mole basis to match SMOKE's convention:
+        # - Gas species: split_factor/divisor converts mass → moles (divisor = MW)
+        # - PM species: divisor=1.0, so mole basis = mass basis (unchanged)
+        speciated = speciate_emissions(emissions, gspro, gsref; basis = :mole)
         GC.gc()
 
         @test nrow(speciated) > 0
@@ -927,52 +1169,107 @@ end
         @test in_grid_count > 0
 
         # --- Step 8: Temporal allocation for Aug 1, 2018 ---
-        # Note: Gentpro monthly profiles for RWC show August=0 for ALL FIPS codes
-        # in the 12LISTOS grid (physically correct — no wood burning in summer in the
-        # Northeast). However, the SMOKE reference output has non-zero August emissions,
-        # suggesting SMOKE uses fallback/alternate temporal profiles.
-        #
-        # We use uniform monthly profiles (1/12) through the standard allocation path,
-        # which gives non-zero emissions for comparison of spatial patterns and species
-        # ratios. The absolute magnitude will differ from the reference since the true
-        # SMOKE temporal factors are unknown.
+        # Use actual Gentpro temporal profiles via ATREF cross-reference.
+        # This correctly handles:
+        # - Per-FIPS, per-SCC monthly and daily profiles from Gentpro
+        # - Different diurnal profiles: 600 (standard RWC) vs 1500 (hydronic heaters)
+        # - Hydronic heaters use static monthly profile + weekly profile instead of daily
 
-        # Parse the RWC diurnal profile from SMOKE hourly profile file
         hourly_profiles = parse_amptpro_hourly(hourly_file)
-        default_diurnal_id = "600"  # RWC ALLDAY profile from ATREF
-        diurnal_factors = get(hourly_profiles, default_diurnal_id, fill(1.0 / 24.0, 24))
+        weekly_profiles = parse_amptpro_weekly(weekly_file)
+        gentpro_monthly = parse_gentpro_monthly(monthly_file)
+        gentpro_daily = parse_gentpro_daily(daily_file)
+        atref = parse_atref_gentpro(atref_file)
 
-        # Build temporal profiles + xref for Emissions.jl
-        # Uniform monthly (1/12) and weekly (1.0) profiles; RWC diurnal profile from SMOKE
-        profiles = DataFrame(
-            profile_type = ["MONTHLY", "WEEKLY", "ALLDAY"],
-            profile_id = [1, 1, 1],
-            factors = [
-                fill(1.0 / 12.0, 12),  # uniform monthly (all months equal)
-                fill(1.0, 7),           # uniform weekly (all days equal)
-                diurnal_factors,        # RWC diurnal profile from SMOKE
-            ],
-        )
-        xref = DataFrame(
-            FIPS = ["00000"],
-            SCC = ["0000000000"],
-            monthly_id = [1],
-            weekly_id = [1],
-            diurnal_id = [1],
-        )
+        @info "Gentpro monthly profiles: $(length(gentpro_monthly)), " *
+              "daily profiles: $(length(gentpro_daily)), " *
+              "hourly profiles: $(length(hourly_profiles)), " *
+              "weekly profiles: $(length(weekly_profiles)), " *
+              "ATREF entries: $(length(atref))"
+
+        # Collect unique (FIPS, SCC) pairs from speciated emissions
+        emissions_fips_scc = Set{Tuple{String, String}}()
+        for row in eachrow(speciated_with_srg)
+            push!(emissions_fips_scc, (string(row.FIPS), string(row.SCC)))
+        end
+
+        @info "Unique (FIPS, SCC) pairs: $(length(emissions_fips_scc))"
+
+        # Build temporal_allocate-compatible profiles and xref from Gentpro data
+        target_date = Date(2018, 8, 1)
+        profiles, xref = build_gentpro_temporal(
+            atref, gentpro_monthly, gentpro_daily,
+            hourly_profiles, weekly_profiles,
+            emissions_fips_scc, target_date)
+
+        @info "Built $(nrow(profiles)) temporal profiles and $(nrow(xref)) xref entries"
+
+        # Verify that different SCC types got different temporal profiles
+        @testset "Per-SCC temporal profile assignment" begin
+            # Check that xref has entries with different diurnal IDs
+            unique_diurnal = unique(xref.diurnal_id)
+            @test length(unique_diurnal) >= 2  # At least 600 and 1500
+
+            # Check that xref has entries with different monthly IDs (FIPS-specific)
+            unique_monthly = unique(xref.monthly_id)
+            @test length(unique_monthly) > 1  # FIPS-specific profiles
+
+            # Check that xref has entries with different weekly IDs
+            unique_weekly = unique(xref.weekly_id)
+            @test length(unique_weekly) >= 2  # Daily-derived vs weekly profiles
+        end
 
         # Episode: Aug 1 00:00 to Aug 2 00:00 (25 hours for IOAPI convention)
         ep_start = DateTime(2018, 8, 1, 0)
         ep_end = DateTime(2018, 8, 2, 1)  # 25 hours
 
+        # SMOKE uses standard-time timezone offsets from the COSTCY file.
+        # The 12LISTOS domain covers the NE US (Eastern Standard Time = UTC-5).
+        # SMOKE convention: OUTZONE=0 (GMT output), county timezone=5 (EST),
+        # so diurnal profiles are shifted by -5 hours (local = UTC - 5).
+        # Build a per-FIPS timezone map using state-level US timezone assignments.
+        # Most states in the 12LISTOS domain are Eastern (UTC-5); a few may be
+        # Central (UTC-6). SMOKE uses standard time (no DST adjustment).
+        us_state_tz = Dict{String, Int}(
+            # Eastern Standard Time (UTC-5)
+            "09" => -5, "10" => -5, "11" => -5, "12" => -5, "13" => -5,
+            "17" => -5, "18" => -5, "21" => -5, "23" => -5, "24" => -5,
+            "25" => -5, "26" => -5, "27" => -5, "33" => -5, "34" => -5,
+            "36" => -5, "37" => -5, "39" => -5, "42" => -5, "44" => -5,
+            "45" => -5, "47" => -5, "50" => -5, "51" => -5, "54" => -5,
+            # Central Standard Time (UTC-6)
+            "01" => -6, "05" => -6, "19" => -6, "20" => -6, "22" => -6,
+            "27" => -6, "28" => -6, "29" => -6, "31" => -6, "38" => -6,
+            "40" => -6, "46" => -6, "48" => -6, "55" => -6,
+            # Mountain Standard Time (UTC-7)
+            "04" => -7, "08" => -7, "16" => -7, "30" => -7, "32" => -7,
+            "35" => -7, "49" => -7, "56" => -7,
+            # Pacific Standard Time (UTC-8)
+            "02" => -8, "06" => -8, "15" => -8, "41" => -8, "53" => -8,
+        )
+        timezone_map = Dict{String, Int}()
+        for row in eachrow(speciated_with_srg)
+            fips = string(row.FIPS)
+            if !haskey(timezone_map, fips) && length(fips) >= 2
+                state = fips[1:2]
+                tz = get(us_state_tz, state, -5)  # Default to EST
+                timezone_map[fips] = tz
+            end
+        end
+
         hourly = temporal_allocate(
             speciated_with_srg, profiles, xref,
-            ep_start, ep_end,
+            ep_start, ep_end;
+            timezone_map = timezone_map,
         )
         GC.gc()
 
         @test nrow(hourly) > 0
         @info "Hourly emissions: $(nrow(hourly)) rows"
+
+        # Verify temporal allocation produced non-zero rates
+        nonzero_rates = count(r -> r.emission_rate > 0, eachrow(hourly))
+        @info "Non-zero hourly rates: $nonzero_rates / $(nrow(hourly))"
 
         # --- Step 9: Merge emissions onto grid ---
         species_list = unique(string.(hourly.POLID))
@@ -992,16 +1289,15 @@ end
         # ================================================================
         # Step 11: Comprehensive comparison to SMOKE reference output
         # ================================================================
-        # Known limitations of this comparison:
-        # 1. Temporal: We use uniform 1/12 monthly profile, not SMOKE's actual
-        #    monthly factors. Absolute magnitudes will differ, but normalized
-        #    spatial patterns and species ratios should still match.
-        # 2. Spatial: We use a single surrogate (USA_100 = population) for all
-        #    SCCs. SMOKE assigns different surrogates per SCC via Grdmat. This
-        #    may cause spatial pattern differences for some species.
-        # 3. Speciation basis: We use mass-basis speciation. SMOKE uses mole-basis
-        #    for gas species. This affects absolute magnitudes but not spatial
-        #    patterns or within-group species ratios.
+        # This comparison uses:
+        # 1. Temporal: Actual Gentpro FIPS-specific monthly/daily profiles via ATREF,
+        #    with different diurnal profiles per SCC type (600 vs 1500).
+        # 2. Spatial: Population surrogate (USA_100) for all SCCs — the only
+        #    surrogate provided in the example case (SMOKE also uses this default).
+        # 3. Speciation: GSREF assigns different profiles per SCC and pollutant
+        #    (e.g., different VOC profiles for fireplaces vs catalytic stoves).
+        #    Mass-basis is used; gas species are converted to mol for comparison.
+        # 4. PMC: Computed as PM10 - PM25 (matching SMOKE's SMKINVEN_FORMULA).
 
         NCDatasets.Dataset(ref_file, "r") do ds
             ref_species = read_ioapi_species(ds)
@@ -1085,7 +1381,7 @@ end
                 for sp in ["CO", "NO", "SO2", "NH3", "NO2"]
                     if haskey(spatial_corrs, sp)
                         @info "Spatial correlation $sp: $(round(spatial_corrs[sp], digits=4))"
-                        @test spatial_corrs[sp] > 0.75
+                        @test spatial_corrs[sp] > 0.9
                     end
                 end
 
@@ -1093,7 +1389,7 @@ end
                 for sp in ["PEC", "POC", "PSO4", "PNH4", "PNO3", "PMOTHR"]
                     if haskey(spatial_corrs, sp)
                         @info "Spatial correlation $sp: $(round(spatial_corrs[sp], digits=4))"
-                        @test spatial_corrs[sp] > 0.7
+                        @test spatial_corrs[sp] > 0.9
                     end
                 end
 
@@ -1103,7 +1399,7 @@ end
                     if !isempty(vals)
                         med_corr = median(vals)
                         @info "Median spatial correlation across $(length(vals)) species: $(round(med_corr, digits=4))"
-                        @test med_corr > 0.6
+                        @test med_corr > 0.9
                     end
                 end
             end
@@ -1144,29 +1440,29 @@ end
 
             # ---- Species ratio consistency ----
             @testset "Species ratios" begin
-                # Within-pollutant-group ratios should match well because speciation
-                # factors are applied identically to the same source mix.
-                # Cross-group ratios (e.g., NO/CO) test that the relative magnitude
-                # of different pollutant groups is consistent.
+                # With mole-basis speciation, Julia output units are:
+                # - Gas: kg/s * split_factor/divisor → multiply by 1000 for mol/s
+                # - PM: kg/s * mass_fraction → multiply by 1000 for g/s
+                # Both match reference units after ×1000 conversion.
+                """Convert Julia total to same units as reference (mol/s or g/s)."""
+                to_ref_units(sp, julia_total) = julia_total * 1000.0
 
-                ratio_tests = [
-                    # (numerator, denominator, description, min_ratio, max_ratio)
-                    ("NO", "NO2", "NO/NO2 (both from NOX)", 0.2, 5.0),
-                    ("NO", "CO", "NO/CO (cross-group)", 0.2, 5.0),
-                    ("SO2", "CO", "SO2/CO (cross-group)", 0.05, 20.0),
-                    ("NH3", "CO", "NH3/CO (cross-group)", 0.05, 20.0),
+                # Within-group gas ratios (both species from same pollutant group)
+                # These should match exactly since both species are from the same
+                # pollutant (NOX) and use the same speciation profile.
+                gas_ratio_tests = [
+                    ("NO", "NO2", "NO/NO2 (both from NOX)", 0.9, 1.1),
                 ]
-
-                for (sp1, sp2, desc, rmin, rmax) in ratio_tests
+                for (sp1, sp2, desc, rmin, rmax) in gas_ratio_tests
                     if haskey(model_data, sp1) && haskey(model_data, sp2) &&
                        sp1 in ref_species && sp2 in ref_species
-                        julia_total_1 = sum(model_data[sp1])
-                        julia_total_2 = sum(model_data[sp2])
+                        julia_mol_1 = to_ref_units(sp1, sum(model_data[sp1]))
+                        julia_mol_2 = to_ref_units(sp2, sum(model_data[sp2]))
                         ref_total_1 = Float64(sum(read_ioapi_var_raw(ds, sp1)))
                         ref_total_2 = Float64(sum(read_ioapi_var_raw(ds, sp2)))
 
-                        if julia_total_2 > 0 && ref_total_2 > 0 && ref_total_1 > 0
-                            julia_ratio = julia_total_1 / julia_total_2
+                        if julia_mol_2 > 0 && ref_total_2 > 0 && ref_total_1 > 0
+                            julia_ratio = julia_mol_1 / julia_mol_2
                             ref_ratio = ref_total_1 / ref_total_2
                             ratio_of_ratios = julia_ratio / ref_ratio
                             @info "$desc: julia=$(round(julia_ratio, digits=4)), ref=$(round(ref_ratio, digits=4)), ratio_of_ratios=$(round(ratio_of_ratios, digits=4))"
@@ -1175,9 +1471,36 @@ end
                     end
                 end
 
-                # PM species ratio check
+                # Cross-group gas ratios (species from different pollutant groups)
+                # These should be close since the temporal profiles apply the same
+                # factors to all species from the same source.
+                cross_ratio_tests = [
+                    ("NO", "CO", "NO/CO (cross-group)", 0.5, 2.0),
+                    ("SO2", "CO", "SO2/CO (cross-group)", 0.5, 2.0),
+                    ("NH3", "CO", "NH3/CO (cross-group)", 0.5, 2.0),
+                ]
+                for (sp1, sp2, desc, rmin, rmax) in cross_ratio_tests
+                    if haskey(model_data, sp1) && haskey(model_data, sp2) &&
+                       sp1 in ref_species && sp2 in ref_species
+                        julia_mol_1 = to_ref_units(sp1, sum(model_data[sp1]))
+                        julia_mol_2 = to_ref_units(sp2, sum(model_data[sp2]))
+                        ref_total_1 = Float64(sum(read_ioapi_var_raw(ds, sp1)))
+                        ref_total_2 = Float64(sum(read_ioapi_var_raw(ds, sp2)))
+
+                        if julia_mol_2 > 0 && ref_total_2 > 0 && ref_total_1 > 0
+                            julia_ratio = julia_mol_1 / julia_mol_2
+                            ref_ratio = ref_total_1 / ref_total_2
+                            ratio_of_ratios = julia_ratio / ref_ratio
+                            @info "$desc: julia=$(round(julia_ratio, digits=4)), ref=$(round(ref_ratio, digits=4)), ratio_of_ratios=$(round(ratio_of_ratios, digits=4))"
+                            @test rmin < ratio_of_ratios < rmax
+                        end
+                    end
+                end
+
+                # PM species ratio check (both mass-based, no MW correction needed)
                 pm_ratio_tests = [
-                    ("PEC", "POC", "PEC/POC (PM components)", 0.1, 10.0),
+                    ("PEC", "POC", "PEC/POC (PM components)", 0.5, 2.0),
+                    ("PNCOM", "POC", "PNCOM/POC (PM components)", 0.2, 5.0),
                 ]
                 for (sp1, sp2, desc, rmin, rmax) in pm_ratio_tests
                     if haskey(model_data, sp1) && haskey(model_data, sp2) &&
@@ -1201,14 +1524,11 @@ end
             # ---- Diurnal pattern comparison ----
             @testset "Diurnal pattern" begin
                 # Compare hourly emission profiles (normalized).
-                # We apply a single diurnal profile (profile 600 from ATREF) to
-                # all sources uniformly, while SMOKE may use per-source or
-                # per-FIPS diurnal profiles from the Gentpro temporal system.
-                # Additionally, SMOKE's temporal allocation combines monthly,
-                # weekly, and diurnal factors that differ by source, so the
-                # aggregate hourly pattern will differ.
-                # Threshold of 0.5 verifies meaningful diurnal shape agreement
-                # while allowing for these known differences.
+                # We use per-SCC diurnal profiles via ATREF:
+                # - Standard RWC SCCs: profile 600 (evening peak)
+                # - Hydronic heater SCCs: profile 1500 (nearly flat)
+                # The aggregate diurnal pattern depends on the relative contribution
+                # of each SCC type, which in turn depends on temporal allocation.
                 for sp in ["CO", "NO", "SO2"]
                     if haskey(model_data, sp) && sp in ref_species
                         ref_hourly = ioapi_hourly_totals(ds, sp)
@@ -1228,7 +1548,7 @@ end
                             julia_norm = julia_h ./ julia_sum
                             diurnal_corr = cosine_similarity(ref_norm, julia_norm)
                             @info "Diurnal pattern correlation ($sp): $(round(diurnal_corr, digits=4))"
-                            @test diurnal_corr > 0.5
+                            @test diurnal_corr > 0.9
 
                             # Also check that hourly variation exists (not flat)
                             ref_cv = std(ref_norm) / mean(ref_norm)
@@ -1270,41 +1590,37 @@ end
                 end
             end
 
-            # ---- Magnitude diagnostic (informational, not tested strictly) ----
+            # ---- Magnitude diagnostics and consistency ----
             @testset "Magnitude diagnostics" begin
-                # Log the total emissions in each species for debugging.
-                # Due to unknown temporal scaling and mass/mole basis differences,
-                # absolute magnitudes are not directly comparable.
-                simple_species_mw = Dict(
-                    "CO" => 28.0, "SO2" => 64.0, "NH3" => 17.0,
-                    "NO" => 30.0, "NO2" => 46.0, "HONO" => 47.0,
-                )
+                # With mole-basis speciation matching SMOKE's convention:
+                # - Gas species: julia output is kg_pollutant/s * split_factor/divisor_g_per_mol
+                #   → multiply by 1000 (kg→g) to get mol/s, matching reference units
+                # - PM species: divisor=1.0 in GSPRO, so mole basis = mass basis
+                #   → multiply by 1000 (kg→g) to get g/s, matching reference units
+                # Both cases: julia_converted = julia_total * 1000.0
                 pm_species = Set(["PAL", "PCA", "PCL", "PEC", "PFE", "PH2O", "PK",
                     "PMG", "PMN", "PMOTHR", "PNA", "PNCOM", "PNH4", "PNO3",
                     "POC", "PSI", "PSO4", "PTI", "PMC", "SULF"])
+
+                magnitude_ratios = Dict{String, Float64}()
 
                 for sp in sort(collect(common_species))
                     ref_total = Float64(sum(read_ioapi_var_raw(ds, sp)))
                     julia_total = sum(model_data[sp])
 
-                    if sp in keys(simple_species_mw)
-                        # Gas species: convert julia kg/s → mol/s for comparison
-                        mw = simple_species_mw[sp]
-                        julia_mol_per_s = julia_total * 1000.0 / mw
-                        ratio = ref_total > 0 ? julia_mol_per_s / ref_total : NaN
-                        @info "  $sp (gas): ref=$(round(ref_total, sigdigits=4)) mol/s, julia=$(round(julia_mol_per_s, sigdigits=4)) mol/s, ratio=$(round(ratio, sigdigits=3))"
-                    elseif sp in pm_species
-                        # PM species: convert julia kg/s → g/s for comparison
-                        julia_g_per_s = julia_total * 1000.0
-                        ratio = ref_total > 0 ? julia_g_per_s / ref_total : NaN
-                        @info "  $sp (PM): ref=$(round(ref_total, sigdigits=4)) g/s, julia=$(round(julia_g_per_s, sigdigits=4)) g/s, ratio=$(round(ratio, sigdigits=3))"
+                    # Convert julia from kg-based to reference units (mol/s or g/s)
+                    julia_converted = julia_total * 1000.0
+                    ratio = ref_total > 0 ? julia_converted / ref_total : NaN
+                    magnitude_ratios[sp] = ratio
+
+                    if sp in pm_species
+                        @info "  $sp (PM): ref=$(round(ref_total, sigdigits=4)) g/s, julia=$(round(julia_converted, sigdigits=4)) g/s, ratio=$(round(ratio, sigdigits=3))"
                     else
-                        @info "  $sp: ref=$(round(ref_total, sigdigits=4)), julia=$(round(julia_total, sigdigits=4))"
+                        @info "  $sp (gas): ref=$(round(ref_total, sigdigits=4)) mol/s, julia=$(round(julia_converted, sigdigits=4)) mol/s, ratio=$(round(ratio, sigdigits=3))"
                     end
                 end
 
-                # As a basic sanity check, all common species should have non-zero
-                # totals in both Julia and reference output
+                # All common species should have non-zero totals in both outputs
                 for sp in common_species
                     ref_total = Float64(sum(read_ioapi_var_raw(ds, sp)))
                     julia_total = sum(model_data[sp])
@@ -1312,8 +1628,94 @@ end
                         @test julia_total > 0
                     end
                 end
+
+                # Check that magnitude ratios are within reasonable range.
+                # Expected patterns:
+                # - Direct gas species (CO, NH3, NO, NO2, SO2): ratio ≈ 1.0
+                # - PM species: ratio ≈ 1.0
+                # - VOC-derived species: ratio ≈ 0.8 (SMOKE subtracts HAPs before
+                #   applying NONHAPTOG profile; we apply NONHAPTOG to full VOC)
+                # - NMOG: ratio ≈ 0.7 (composite tracking variable)
+                valid_ratios = filter(p -> !isnan(p.second) && p.second > 0, magnitude_ratios)
+                if !isempty(valid_ratios)
+                    ratio_vals = collect(values(valid_ratios))
+                    @info "Magnitude ratio stats: median=$(round(median(ratio_vals), sigdigits=3)), " *
+                          "min=$(round(minimum(ratio_vals), sigdigits=3)), " *
+                          "max=$(round(maximum(ratio_vals), sigdigits=3))"
+
+                    # All species should have ratios within a factor of 2
+                    @test all(r -> 0.5 < r < 2.0, ratio_vals)
+
+                    # Median ratio should be close to 1.0
+                    @test 0.7 < median(ratio_vals) < 1.3
+                end
             end
         end
+    end
+
+    # ========================================================================
+    @testset "Per-SCC profile differentiation" begin
+        # Verify that the test correctly assigns different profiles to different
+        # source types, as the reference SMOKE model does.
+
+        # Parse GSREF and verify SCC-specific speciation
+        gsref = parse_smoke_gsref_csv(gsref_file)
+
+        # Wood combustion SCCs should use different VOC profiles than hydronic heaters
+        wood_voc = filter(r -> startswith(r.SCC, "2104008") &&
+                              !startswith(r.SCC, "21040086") &&  # exclude hydronic
+                              (r.pollutant_id == "NONHAPVOC" || r.pollutant_id == "VOC"), gsref)
+        hydronic_voc = filter(r -> startswith(r.SCC, "21040086") &&
+                                   (r.pollutant_id == "NONHAPVOC" || r.pollutant_id == "VOC"), gsref)
+
+        if nrow(wood_voc) > 0 && nrow(hydronic_voc) > 0
+            wood_profiles = unique(wood_voc.profile_code)
+            hydronic_profiles = unique(hydronic_voc.profile_code)
+            @info "Wood combustion VOC profiles: $wood_profiles"
+            @info "Hydronic heater VOC profiles: $hydronic_profiles"
+        end
+
+        # Different PM2.5 profiles should exist for different fuel types
+        pm_profiles = filter(r -> r.pollutant_id == "PM2_5" || r.pollutant_id == "PM25", gsref)
+        if nrow(pm_profiles) > 0
+            unique_pm_profiles = unique(pm_profiles.profile_code)
+            @info "Unique PM2.5 speciation profiles: $(length(unique_pm_profiles))"
+            @test length(unique_pm_profiles) >= 2  # At least residential wood vs oil/gas
+        end
+
+        # Parse ATREF and verify SCC-specific temporal profiles
+        atref = parse_atref_gentpro(atref_file)
+
+        # Collect unique diurnal profile IDs by SCC prefix
+        standard_rwc_diurnal = Set{String}()
+        hydronic_diurnal = Set{String}()
+        for ((scc, fips), info) in atref
+            allday = get(info, "ALLDAY", "")
+            if startswith(scc, "21040086")  # hydronic heater
+                push!(hydronic_diurnal, allday)
+            elseif startswith(scc, "2104")
+                push!(standard_rwc_diurnal, allday)
+            end
+        end
+
+        @info "Standard RWC diurnal profiles: $standard_rwc_diurnal"
+        @info "Hydronic heater diurnal profiles: $hydronic_diurnal"
+
+        # Verify different diurnal profiles for different source types
+        if !isempty(standard_rwc_diurnal) && !isempty(hydronic_diurnal)
+            @test standard_rwc_diurnal != hydronic_diurnal
+        end
+
+        # Verify FIPS-specific monthly profiles
+        monthly_profiles_used = Set{String}()
+        for ((scc, fips), info) in atref
+            mon_str = get(info, "MONTHLY", "")
+            if !isempty(mon_str)
+                push!(monthly_profiles_used, mon_str)
+            end
+        end
+        @info "Unique monthly profile IDs: $(length(monthly_profiles_used))"
+        @test length(monthly_profiles_used) > 10  # Should have many FIPS-specific profiles
     end
 
     # ========================================================================
