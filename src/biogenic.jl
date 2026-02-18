@@ -204,7 +204,7 @@ produce gridded biogenic emissions compatible with [`merge_categories`](@ref).
 A `DataFrame` with columns:
 - `:grid_row` (Int): Grid row index
 - `:grid_col` (Int): Grid column index
-- `:species` (String): Biogenic species name
+- `:pollutant` (String): Biogenic species name
 - `:emission_rate` (Float64): Emission rate (μg/m²/hr adjusted)
 """
 function compute_biogenic_emissions(
@@ -271,7 +271,7 @@ function compute_biogenic_emissions(
     n = length(accumulator)
     grid_rows = Vector{Int}(undef, n)
     grid_cols = Vector{Int}(undef, n)
-    species_out = Vector{String}(undef, n)
+    pollutant_out = Vector{String}(undef, n)
     rates = Vector{Float64}(undef, n)
 
     for (idx, ((cell_idx, sp), rate)) in enumerate(accumulator)
@@ -279,16 +279,16 @@ function compute_biogenic_emissions(
         i = (cell_idx - 1) % grid.Nx + 1
         grid_rows[idx] = j
         grid_cols[idx] = i
-        species_out[idx] = sp
+        pollutant_out[idx] = sp
         rates[idx] = rate
     end
 
     result = DataFrame(
         grid_row = grid_rows,
         grid_col = grid_cols,
-        species = species_out,
+        pollutant = pollutant_out,
         emission_rate = rates,
     )
-    sort!(result, [:grid_row, :grid_col, :species])
+    sort!(result, [:grid_row, :grid_col, :pollutant])
     return result
 end

@@ -110,7 +110,7 @@ using DataFrames
         # β = 0.09 K⁻¹ for terpenes
 
         # Terpene: γ_T(Ts) should be exactly 1.0 at standard temperature
-        @test temperature_adjustment(303.15, "TERP") ≈ 1.0 rtol = 1e-10
+        @test temperature_adjustment(303.15, "TERP") ≈ 1.0 rtol = 1.0e-10
 
         # Isoprene peaks near TM=314K, not at Ts=303.15K
         γ_std = temperature_adjustment(303.15, "ISOP")
@@ -174,7 +174,7 @@ using DataFrames
         @test nrow(result) > 0
         @test hasproperty(result, :grid_row)
         @test hasproperty(result, :grid_col)
-        @test hasproperty(result, :species)
+        @test hasproperty(result, :pollutant)
         @test hasproperty(result, :emission_rate)
         @test all(result.emission_rate .> 0.0)
 
@@ -201,9 +201,9 @@ using DataFrames
         par = fill(1000.0, 4)
 
         result = compute_biogenic_emissions(config, grid, temperature, par)
-        species = unique(result.species)
-        @test "ISOP" in species
-        @test "TERP" in species
+        pols = unique(result.pollutant)
+        @test "ISOP" in pols
+        @test "TERP" in pols
 
         rm(beld_file)
         rm(ef_file)

@@ -150,6 +150,14 @@ function assign_surrogates(emissions::DataFrame, gridref::DataFrame)
         end
     end
 
+    # Coalesce any remaining missing Surrogate values to 0
+    still_missing = ismissing.(joined.Surrogate)
+    if any(still_missing)
+        n_missing = count(still_missing)
+        @warn "assign_surrogates: $n_missing emission records have no matching surrogate; defaulting to 0"
+        joined.Surrogate = [ismissing(s) ? 0 : s for s in joined.Surrogate]
+    end
+
     return joined
 end
 
@@ -317,10 +325,6 @@ function process_emissions(;
     # Step 5: Speciation (optional)
     if nrow(gspro) > 0 && nrow(gsref) > 0
         emissions = speciate_emissions(emissions, gspro, gsref; basis = speciation_basis)
-        # Rename species column back to POLID for downstream compatibility
-        if hasproperty(emissions, :species) && !hasproperty(emissions, :POLID)
-            rename!(emissions, :species => :POLID)
-        end
     end
 
     # Step 6: Assign surrogates if gridref provided
