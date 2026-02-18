@@ -17,6 +17,8 @@ Temporal allocation uses three types of profiles:
 ```@docs
 read_temporal_profiles
 read_temporal_xref
+read_day_specific
+read_hour_specific
 ```
 
 ### Temporal Allocation

@@ -1,4 +1,4 @@
-export read_ff10, aggregate_emissions, filter_known_pollutants,
+export read_ff10, read_orl, aggregate_emissions, filter_known_pollutants,
     map_pollutant_names!, assign_surrogates, build_data_weight_map,
     process_emissions
 
@@ -27,6 +27,36 @@ function read_ff10(filepath::AbstractString, format::Symbol)
         return FF10OnRoadDataFrame(df)
     else
         throw(ArgumentError("Unknown FF10 format: $format. Must be :nonpoint, :point, :nonroad, or :onroad."))
+    end
+end
+
+"""
+    read_orl(filepath::AbstractString, format::Symbol) -> EmissionsDataFrame
+
+Read an ORL-format CSV file and return the appropriate `EmissionsDataFrame` subtype.
+
+`format` must be one of `:nonpoint`, `:point`, `:nonroad`, `:onroad`, or `:fire`.
+
+# Examples
+```julia
+emis = read_orl("nonpoint_2019.csv", :nonpoint)
+emis.df  # access the underlying DataFrame
+```
+"""
+function read_orl(filepath::AbstractString, format::Symbol)
+    df = CSV.read(filepath, DataFrame; header = false, comment = "#", silencewarnings = true)
+    if format == :nonpoint
+        return ORLNonPointDataFrame(df)
+    elseif format == :point
+        return ORLPointDataFrame(df)
+    elseif format == :nonroad
+        return ORLNonRoadDataFrame(df)
+    elseif format == :onroad
+        return ORLOnRoadDataFrame(df)
+    elseif format == :fire
+        return ORLFireDataFrame(df)
+    else
+        throw(ArgumentError("Unknown ORL format: $format. Must be :nonpoint, :point, :nonroad, :onroad, or :fire."))
     end
 end
 
@@ -180,14 +210,19 @@ end
         gspro::DataFrame=DataFrame(),
         gsref::DataFrame=DataFrame(),
         speciation_basis::Symbol=:mass,
-        controls::Vector{ControlSpec}=ControlSpec[]
+        controls::Vector{ControlSpec}=ControlSpec[],
+        inventory_type::Symbol=:ff10,
+        do_validate::Bool=false,
+        day_specific::DataFrame=DataFrame(),
+        hour_specific::DataFrame=DataFrame()
     ) -> DataFrame
 
 Execute the complete emissions processing pipeline (all in-memory).
 
 Pipeline steps:
-1. Read FF10 inventory files
+1. Read inventory files (FF10 or ORL format)
 2. Aggregate and filter emissions
+2b. Validate inventory (optional)
 3. Map pollutant names
 4. Apply controls (if provided)
 5. Speciation (if GSPRO/GSREF provided)
@@ -197,7 +232,7 @@ Pipeline steps:
 9. Merge spatial + temporal into gridded hourly emissions
 
 # Arguments
-- `inventory_files`: Vector of `(filepath, format)` tuples for FF10 files.
+- `inventory_files`: Vector of `(filepath, format)` tuples for inventory files.
 - `grid`: Target grid definition.
 - `profiles`: Temporal profiles from [`read_temporal_profiles`](@ref).
 - `xref`: Temporal cross-reference from [`read_temporal_xref`](@ref).
@@ -212,6 +247,10 @@ Pipeline steps:
 - `gsref`: Speciation cross-reference from [`read_gsref`](@ref).
 - `speciation_basis`: `:mass` or `:mole` for speciation factor calculation.
 - `controls`: Control specifications from [`read_growth_factors`](@ref) or [`read_control_factors`](@ref).
+- `inventory_type`: `:ff10` (default) or `:orl` for inventory format selection.
+- `do_validate`: If `true`, validate inventory after aggregation and log warnings.
+- `day_specific`: Day-specific emissions from [`read_day_specific`](@ref).
+- `hour_specific`: Hour-specific emissions from [`read_hour_specific`](@ref).
 
 # Returns
 If `do_temporal=true`: A `DataFrame` with gridded hourly emissions
@@ -235,17 +274,36 @@ function process_emissions(;
         gspro::DataFrame = DataFrame(),
         gsref::DataFrame = DataFrame(),
         speciation_basis::Symbol = :mass,
-        controls::Vector{ControlSpec} = ControlSpec[]
+        controls::Vector{ControlSpec} = ControlSpec[],
+        inventory_type::Symbol = :ff10,
+        do_validate::Bool = false,
+        day_specific::DataFrame = DataFrame(),
+        hour_specific::DataFrame = DataFrame()
     )
     # Step 1: Read inventory files
     raw_dfs = DataFrame[]
     for (filepath, format) in inventory_files
-        emis = read_ff10(filepath, format)
+        emis = if inventory_type == :orl
+            read_orl(filepath, format)
+        else
+            read_ff10(filepath, format)
+        end
         push!(raw_dfs, emis.df)
     end
 
     # Step 2: Aggregate emissions
     emissions = aggregate_emissions(raw_dfs)
+
+    # Step 2b: Validate inventory (optional)
+    if do_validate
+        vresult = validate_inventory(emissions)
+        for w in vresult.warnings
+            @warn "Inventory validation: $w"
+        end
+        for e in vresult.errors
+            @warn "Inventory validation ERROR: $e"
+        end
+    end
 
     # Step 3: Filter and map pollutant names
     emissions = filter_known_pollutants(emissions)
@@ -286,7 +344,10 @@ function process_emissions(;
     if nrow(profiles) > 0 && nrow(xref) > 0
         hourly = temporal_allocate(
             emissions, profiles, xref,
-            episode_start, episode_end; timezone_offset = timezone_offset
+            episode_start, episode_end;
+            timezone_offset = timezone_offset,
+            day_specific = day_specific,
+            hour_specific = hour_specific
         )
 
         # Step 9: Merge spatial + temporal
