@@ -142,10 +142,16 @@ function setupSpatialProcessor(config::Config)
     # Create grid from file if it exists, otherwise create a default grid
     if isfile(config.GridFile)
         try
-            grid = NewGridIrregular(config.GridName, config.GridFile, config.InputSR, config.OutputSR)
-        catch e
-            @warn "Failed to read grid file $(config.GridFile): $e. Using default 1x1 grid."
-            grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+            # Try GRIDDESC format first if a grid name is provided
+            grid = read_griddesc(config.GridFile, config.GridName)
+        catch
+            try
+                # Fall back to polygon coordinate file format
+                grid = NewGridIrregular(config.GridName, config.GridFile, config.InputSR, config.OutputSR)
+            catch e
+                @warn "Failed to read grid file $(config.GridFile): $e. Using default 1x1 grid."
+                grid = NewGridIrregular(config.GridName, 1, 1, config.OutputSR, 1.0, 1.0, 0.0, 0.0)
+            end
         end
     else
         @warn "Grid file $(config.GridFile) not found. Using default 1x1 grid."
