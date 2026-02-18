@@ -404,4 +404,154 @@ using DataFrames, Dates, Unitful
         @test nrow(nox_rows) == 2
         @test nrow(voc_rows) == 2
     end
+
+    @testset "read_day_specific" begin
+        tmpfile = tempname()
+        open(tmpfile, "w") do io
+            println(io, "# Day-specific emissions")
+            println(io, "036001;2103007000;NOX;07/01/2019;500.0")
+            println(io, "036001;2103007000;NOX;07/02/2019;600.0!daily override")
+        end
+        ds = read_day_specific(tmpfile)
+        @test nrow(ds) == 2
+        @test ds[1, :FIPS] == "36001"
+        @test ds[1, :SCC] == "2103007000"
+        @test ds[1, :POLID] == "NOX"
+        @test ds[1, :date] == Date(2019, 7, 1)
+        @test ds[1, :day_value] ≈ 500.0
+        @test ds[2, :day_value] ≈ 600.0
+        rm(tmpfile)
+    end
+
+    @testset "read_hour_specific" begin
+        tmpfile = tempname()
+        hourly_vals = join(fill("10.0", 24), ";")
+        open(tmpfile, "w") do io
+            println(io, "# Hour-specific emissions")
+            println(io, "036001;2103007000;NOX;07/01/2019;$hourly_vals")
+        end
+        hs = read_hour_specific(tmpfile)
+        @test nrow(hs) == 1
+        @test hs[1, :FIPS] == "36001"
+        @test hs[1, :date] == Date(2019, 7, 1)
+        @test length(hs[1, :hourly_values]) == 24
+        @test all(v -> v ≈ 10.0, hs[1, :hourly_values])
+        rm(tmpfile)
+    end
+
+    @testset "temporal_allocate with hour_specific override" begin
+        emissions = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            ANN_VALUE = [100.0]
+        )
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "DIURNAL"],
+            profile_id = [1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), fill(1.0 / 24.0, 24)]
+        )
+        xref = DataFrame(
+            FIPS = ["00000"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        # Hour-specific: override with known values
+        hour_specific = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            date = [Date(2019, 7, 1)],
+            hourly_values = [collect(1.0:24.0)]
+        )
+
+        ep_start = DateTime(2019, 7, 1, 0)
+        ep_end = DateTime(2019, 7, 1, 3)  # 3 hours
+
+        result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end;
+            hour_specific = hour_specific)
+        @test nrow(result) == 3
+        # Hour 0 -> hour_idx 1 -> value 1.0
+        # Hour 1 -> hour_idx 2 -> value 2.0
+        # Hour 2 -> hour_idx 3 -> value 3.0
+        sort!(result, :hour)
+        @test result[1, :emission_rate] ≈ 1.0
+        @test result[2, :emission_rate] ≈ 2.0
+        @test result[3, :emission_rate] ≈ 3.0
+    end
+
+    @testset "temporal_allocate with day_specific override" begin
+        emissions = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            ANN_VALUE = [100.0]
+        )
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "DIURNAL"],
+            profile_id = [1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), fill(1.0 / 24.0, 24)]
+        )
+        xref = DataFrame(
+            FIPS = ["00000"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        # Day-specific: override daily total
+        day_specific = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            date = [Date(2019, 7, 1)],
+            day_value = [240.0]
+        )
+
+        ep_start = DateTime(2019, 7, 1, 0)
+        ep_end = DateTime(2019, 7, 1, 3)
+
+        result = temporal_allocate(emissions, profiles, xref, ep_start, ep_end;
+            day_specific = day_specific)
+        @test nrow(result) == 3
+        # With uniform diurnal (1/24), day_value * (1/24) * 24 = 240.0 * 1.0 = 240.0
+        # Wait: hourly_rate = day_val * df * 24 = 240 * (1/24) * 24 = 240.0
+        @test all(r -> r ≈ 240.0, result.emission_rate)
+    end
+
+    @testset "temporal_allocate backward compatibility" begin
+        # Verify that calling without day/hour specific produces same results
+        emissions = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            POLID = ["NOX"],
+            ANN_VALUE = [100.0]
+        )
+        profiles = DataFrame(
+            profile_type = ["MONTHLY", "WEEKLY", "DIURNAL"],
+            profile_id = [1, 1, 1],
+            factors = [fill(1.0 / 12.0, 12), fill(1.0, 7), fill(1.0 / 24.0, 24)]
+        )
+        xref = DataFrame(
+            FIPS = ["36001"],
+            SCC = ["2103007000"],
+            monthly_id = [1],
+            weekly_id = [1],
+            diurnal_id = [1]
+        )
+
+        ep_start = DateTime(2019, 7, 1, 0)
+        ep_end = DateTime(2019, 7, 1, 3)
+
+        result_old = temporal_allocate(emissions, profiles, xref, ep_start, ep_end)
+        result_new = temporal_allocate(emissions, profiles, xref, ep_start, ep_end;
+            day_specific = DataFrame(), hour_specific = DataFrame())
+
+        @test nrow(result_old) == nrow(result_new)
+        @test all(result_old.emission_rate .≈ result_new.emission_rate)
+    end
 end

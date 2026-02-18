@@ -1,4 +1,5 @@
-export merge_emissions, merge_categories
+export merge_emissions, merge_categories, merge_categories_tracked,
+    merge_2d_3d, to_model_ready
 
 """
     merge_emissions(hourly_emissions::DataFrame, locIndex::Dict{String, IndexInfo},
@@ -185,5 +186,152 @@ function merge_categories(dfs::Vector{DataFrame})
         :emission_rate => sum => :emission_rate
     )
     sort!(result, [:hour, :grid_row, :grid_col, :pollutant])
+    return result
+end
+
+"""
+    merge_categories_tracked(dfs::Vector{Pair{String,DataFrame}}) -> DataFrame
+
+Combine gridded emissions from different source categories, tracking which category
+each emission came from.
+
+Each pair is `"category_name" => gridded_df`. Adds a `:source_category` column and
+sums by `(grid_row, grid_col, hour, pollutant, source_category)`.
+
+# Arguments
+- `dfs`: Vector of `"name" => DataFrame` pairs.
+
+# Returns
+A combined `DataFrame` with `:source_category` column added, sorted by hour, row, col, pollutant, category.
+"""
+function merge_categories_tracked(dfs::Vector{Pair{String, DataFrame}})
+    if isempty(dfs)
+        return DataFrame(
+            grid_row = Int[],
+            grid_col = Int[],
+            hour = DateTime[],
+            pollutant = String[],
+            source_category = String[],
+            emission_rate = Float64[]
+        )
+    end
+
+    parts = DataFrame[]
+    for (name, df) in dfs
+        d = copy(df)
+        d[!, :source_category] .= name
+        push!(parts, d)
+    end
+
+    combined = vcat(parts...)
+    if nrow(combined) == 0
+        return combined
+    end
+
+    result = combine(
+        groupby(combined, [:grid_row, :grid_col, :hour, :pollutant, :source_category]),
+        :emission_rate => sum => :emission_rate
+    )
+    sort!(result, [:hour, :grid_row, :grid_col, :pollutant, :source_category])
+    return result
+end
+
+"""
+    merge_2d_3d(surface::DataFrame, elevated::DataFrame; surface_layer::Int=1) -> DataFrame
+
+Merge 2D surface emissions with 3D elevated emissions into a unified DataFrame
+with a `:layer` column.
+
+Surface emissions are assigned to `surface_layer` (default 1). Elevated emissions
+must already have a `:layer` column.
+
+# Returns
+A `DataFrame` with columns: `:grid_row`, `:grid_col`, `:hour`, `:pollutant`,
+`:layer`, `:emission_rate`.
+"""
+function merge_2d_3d(surface::DataFrame, elevated::DataFrame; surface_layer::Int = 1)
+    # Add layer column to surface data
+    surf = copy(surface)
+    surf[!, :layer] .= surface_layer
+
+    # Elevated should already have :layer
+    if !hasproperty(elevated, :layer)
+        elev = copy(elevated)
+        elev[!, :layer] .= surface_layer
+    else
+        elev = elevated
+    end
+
+    # Select common columns
+    cols = [:grid_row, :grid_col, :hour, :pollutant, :layer, :emission_rate]
+    combined = vcat(select(surf, cols), select(elev, cols))
+
+    if nrow(combined) == 0
+        return combined
+    end
+
+    result = combine(
+        groupby(combined, [:grid_row, :grid_col, :hour, :pollutant, :layer]),
+        :emission_rate => sum => :emission_rate
+    )
+    sort!(result, [:hour, :layer, :grid_row, :grid_col, :pollutant])
+    return result
+end
+
+"""
+    to_model_ready(merged::DataFrame, grid::GridDef, hours::Vector{DateTime};
+        n_layers::Int=1) -> Dict{String, Array{Float64}}
+
+Convert merged gridded emissions DataFrame to dense 4D arrays suitable for
+air quality model input.
+
+# Arguments
+- `merged::DataFrame`: Gridded emissions with columns `:grid_row`, `:grid_col`,
+  `:hour`, `:pollutant`, `:emission_rate`, and optionally `:layer`.
+- `grid::GridDef`: Grid definition (provides `Ny` rows and `Nx` columns).
+- `hours::Vector{DateTime}`: Ordered list of time steps.
+- `n_layers::Int=1`: Number of vertical layers.
+
+# Returns
+`Dict{String, Array{Float64, 4}}` mapping pollutant names to arrays with
+dimensions `[nrows, ncols, n_layers, n_hours]`.
+"""
+function to_model_ready(merged::DataFrame, grid::GridDef, hours::Vector{DateTime};
+        n_layers::Int = 1)
+    nrows = grid.Ny
+    ncols = grid.Nx
+    n_hours_t = length(hours)
+
+    # Build hour -> index mapping
+    hour_idx = Dict{DateTime, Int}()
+    for (i, h) in enumerate(hours)
+        hour_idx[h] = i
+    end
+
+    # Get unique pollutants
+    pollutants = unique(merged.pollutant)
+    has_layer = hasproperty(merged, :layer)
+
+    result = Dict{String, Array{Float64, 4}}()
+    for pol in pollutants
+        result[pol] = zeros(Float64, nrows, ncols, n_layers, n_hours_t)
+    end
+
+    for row in eachrow(merged)
+        pol = row.pollutant
+        haskey(result, pol) || continue
+
+        r = row.grid_row
+        c = row.grid_col
+        h_idx = get(hour_idx, row.hour, 0)
+        h_idx == 0 && continue
+        l = has_layer ? row.layer : 1
+
+        # Bounds check
+        (1 <= r <= nrows && 1 <= c <= ncols && 1 <= l <= n_layers) || continue
+
+        result[pol][r, c, l, h_idx] += row.emission_rate
+    end
+
     return result
 end

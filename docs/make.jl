@@ -26,6 +26,9 @@ makedocs(;
         "Vertical Layer Allocation" => "laypoint.md",
         "Conservative Regridding" => "regridding.md",
         "Biogenic Emissions" => "biogenic.md",
+        "Inventory Validation" => "validation.md",
+        "ORL Format" => "orl.md",
+        "QA Reporting" => "reporting.md",
     ],
     checkdocs = :none
 )
