@@ -43,7 +43,7 @@ using Dates
 using NCDatasets
 using CSV
 using Unitful: ustrip
-using Statistics: cor, mean, median, std, quantile, var, skewness, kurtosis
+using Statistics: cor, mean, median, std, quantile, var
 using LinearAlgebra: norm
 
 # Import utilities from main SMOKE test
