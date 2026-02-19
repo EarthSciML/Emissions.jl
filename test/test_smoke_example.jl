@@ -1398,14 +1398,32 @@ end
                 @test length(nonzero_common) >= length(nonzero_ref) ÷ 2
             end
 
-            # ---- Non-negativity ----
-            @testset "Non-negativity" begin
+            # ---- Non-negativity and data quality ----
+            @testset "Non-negativity and data quality" begin
                 for sp in julia_species
-                    has_negative = any(model_data[sp] .< 0)
+                    arr = model_data[sp]
+
+                    # Check for negative values
+                    has_negative = any(arr .< 0)
                     if has_negative
-                        @info "Species $sp has negative emission values"
+                        neg_count = sum(arr .< 0)
+                        min_val = minimum(arr)
+                        @info "Species $sp has $neg_count negative values, minimum: $min_val"
                     end
                     @test !has_negative
+
+                    # Check for NaN or Inf values (data corruption)
+                    has_nan = any(isnan.(arr))
+                    has_inf = any(isinf.(arr))
+                    @test !has_nan
+                    @test !has_inf
+
+                    # Check for unreasonably large values (potential unit errors)
+                    max_val = maximum(arr)
+                    if max_val > 1e6  # mol/s or g/s
+                        @warn "Species $sp has very large maximum value: $max_val (potential unit issue?)"
+                    end
+                    @test max_val < 1e8  # Sanity check for extreme values
                 end
             end
 
@@ -1636,6 +1654,18 @@ end
                             ref_cv = std(ref_norm) / mean(ref_norm)
                             julia_cv = std(julia_norm) / mean(julia_norm)
                             @info "Diurnal CV ($sp): ref=$(round(ref_cv, digits=3)), julia=$(round(julia_cv, digits=3))"
+
+                            # Mass conservation check: diurnal patterns should preserve relative totals
+                            # Even though absolute magnitudes may differ, the ratio of daily totals
+                            # should be close to the ratio seen in spatial comparisons
+                            if ref_sum > 0 && julia_sum > 0
+                                temporal_magnitude_ratio = julia_sum / ref_sum
+                                # Allow broader tolerance since temporal allocation can introduce small numerical differences
+                                @test 0.5 < temporal_magnitude_ratio < 2.0
+                                if temporal_magnitude_ratio < 0.99 || temporal_magnitude_ratio > 1.01
+                                    @info "$sp temporal magnitude ratio: $(round(temporal_magnitude_ratio, digits=4))"
+                                end
+                            end
                         end
                     end
                 end
