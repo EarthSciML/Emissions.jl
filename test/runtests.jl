@@ -27,6 +27,8 @@ include("test_ioapi.jl")
 include("test_integration.jl")
 include("test_pipeline_integration.jl")
 include("test_smoke_example.jl")
-# Note: Comprehensive validation tests require additional dependency management
-# include("test_smoke_comprehensive_validation.jl")
-# include("test_smoke_additional_validation.jl")
+# Enhanced SMOKE validation tests - now enabled by default for comprehensive validation
+include("test_smoke_comprehensive_validation.jl")
+include("test_smoke_additional_validation.jl")
+include("test_smoke_enhanced_validation.jl")
+include("test_smoke_sector_extensibility.jl")
