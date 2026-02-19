@@ -27,3 +27,6 @@ include("test_ioapi.jl")
 include("test_integration.jl")
 include("test_pipeline_integration.jl")
 include("test_smoke_example.jl")
+# Note: Comprehensive validation tests require additional dependency management
+# include("test_smoke_comprehensive_validation.jl")
+# include("test_smoke_additional_validation.jl")

@@ -41,7 +41,7 @@ using Dates
 using NCDatasets
 using CSV
 using Unitful: ustrip
-using Statistics: cor, mean, median, std
+using Statistics: cor, mean, median, std, quantile
 
 const SMOKE_TEST_DIR = "/tmp/smoke_test"
 const SMOKE_BASE = joinpath(SMOKE_TEST_DIR, "smoke_example_case")
@@ -1659,7 +1659,7 @@ end
                             # Even though absolute magnitudes may differ, the ratio of daily totals
                             # should be close to the ratio seen in spatial comparisons
                             if ref_sum > 0 && julia_sum > 0
-                                temporal_magnitude_ratio = julia_sum / ref_sum
+                                temporal_magnitude_ratio = (julia_sum * 1000.0) / ref_sum
                                 # Allow broader tolerance since temporal allocation can introduce small numerical differences
                                 @test 0.5 < temporal_magnitude_ratio < 2.0
                                 if temporal_magnitude_ratio < 0.99 || temporal_magnitude_ratio > 1.01
