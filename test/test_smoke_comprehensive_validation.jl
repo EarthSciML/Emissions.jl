@@ -99,7 +99,7 @@ include("test_smoke_example.jl")
                     total = sum(data)
                     nonzero_cells = count(data .> 0)
                     max_val = maximum(data)
-                    min_nonzero = minimum(data[data .> 0]) if nonzero_cells > 0 else 0.0
+                    min_nonzero = nonzero_cells > 0 ? minimum(data[data .> 0]) : 0.0
 
                     species_analysis[sp] = Dict(
                         :total => total,

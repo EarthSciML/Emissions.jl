@@ -32,3 +32,9 @@ include("test_smoke_comprehensive_validation.jl")
 include("test_smoke_additional_validation.jl")
 include("test_smoke_enhanced_validation.jl")
 include("test_smoke_sector_extensibility.jl")
+# Ultra-rigorous validation with advanced statistical analysis
+include("test_smoke_ultra_rigorous_validation.jl")
+# Cross-sector validation for comprehensive multi-sector testing
+include("test_smoke_cross_sector_validation.jl")
+# Performance and efficiency validation
+include("test_smoke_performance_validation.jl")
