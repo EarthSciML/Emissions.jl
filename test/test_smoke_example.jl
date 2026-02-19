@@ -40,11 +40,21 @@ Download a file from Google Drive using curl. Handles the large-file
 confirmation prompt via the `confirm=t` parameter.
 """
 function download_from_gdrive(file_id::AbstractString, output_path::AbstractString)
-    url = "https://drive.google.com/uc?export=download&id=$(file_id)&confirm=t"
+    # Use drive.usercontent.google.com to bypass virus scan warning for large files
+    url = "https://drive.usercontent.google.com/download?id=$(file_id)&export=download&confirm=t"
     @info "Downloading from Google Drive (file ID: $file_id)..."
     run(`curl -L --retry 3 --retry-delay 10 --max-time 7200 -o $output_path $url`)
     if !isfile(output_path) || filesize(output_path) < 1000
         error("Download failed or file too small: $output_path ($(filesize(output_path)) bytes)")
+    end
+    # Verify the download is not an HTML error page
+    open(output_path) do f
+        header = read(f, min(filesize(output_path), 20))
+        if startswith(String(header), "<!DOCTYPE") || startswith(String(header), "<html")
+            rm(output_path, force = true)
+            error("Download returned an HTML page instead of the expected file. " *
+                  "The Google Drive link may have changed or require authentication.")
+        end
     end
     @info "Downloaded $(round(filesize(output_path) / 1024^2, digits=1)) MB"
 end
@@ -1319,8 +1329,11 @@ end
                 if !isempty(extra_in_julia)
                     @info "Species produced by Julia but not in reference ($(length(extra_in_julia))): $extra_in_julia"
                 end
-                # At least half of reference species should be produced
-                @test length(common_species) >= length(ref_species) ÷ 3
+                # At least half of reference species with non-zero totals should be produced
+                nonzero_ref = [sp for sp in ref_species if Float64(sum(read_ioapi_var_raw(ds, sp))) > 0]
+                nonzero_common = intersect(Set(julia_species), Set(nonzero_ref))
+                @info "Non-zero reference species: $(length(nonzero_ref)), common: $(length(nonzero_common))"
+                @test length(nonzero_common) >= length(nonzero_ref) ÷ 2
             end
 
             # ---- Non-negativity ----
@@ -1406,7 +1419,7 @@ end
 
             # ---- Active cell overlap ----
             @testset "Active cell overlap" begin
-                for sp in ["CO", "NO", "SO2"]
+                for sp in ["CO", "NO", "SO2", "NH3"]
                     if haskey(model_data, sp) && sp in ref_species
                         ref_spatial = ioapi_spatial_pattern(ds, sp)
                         julia_spatial = dropdims(sum(model_data[sp], dims = (3, 4)), dims = (3, 4))
@@ -1418,7 +1431,9 @@ end
                         jaccard = n_union > 0 ? n_intersection / n_union : 0.0
 
                         @info "Active cell Jaccard index ($sp): $(round(jaccard, digits=3)) (ref=$(count(ref_active)), julia=$(count(julia_active)), overlap=$n_intersection)"
-                        @test jaccard > 0.3
+                        # All non-point RWC sources use population surrogate, so
+                        # active cells should have high overlap
+                        @test jaccard > 0.5
                     end
                 end
             end
@@ -1432,7 +1447,11 @@ end
                         if total > 0
                             flat = sort(vec(sum(arr, dims = (3, 4))), rev = true)
                             top5_frac = sum(flat[1:min(5, length(flat))]) / total
+                            # Population-based surrogate produces concentrated emissions
+                            # (NYC metro area dominates in LISTOS domain)
                             @test top5_frac > 0.05
+                            # Verify not completely concentrated in one cell
+                            @test flat[1] / total < 0.5
                         end
                     end
                 end
@@ -1473,11 +1492,12 @@ end
 
                 # Cross-group gas ratios (species from different pollutant groups)
                 # These should be close since the temporal profiles apply the same
-                # factors to all species from the same source.
+                # factors to all species from the same source. Tighter bounds because
+                # all RWC sources share the same surrogate and similar temporal profiles.
                 cross_ratio_tests = [
-                    ("NO", "CO", "NO/CO (cross-group)", 0.5, 2.0),
-                    ("SO2", "CO", "SO2/CO (cross-group)", 0.5, 2.0),
-                    ("NH3", "CO", "NH3/CO (cross-group)", 0.5, 2.0),
+                    ("NO", "CO", "NO/CO (cross-group)", 0.7, 1.4),
+                    ("SO2", "CO", "SO2/CO (cross-group)", 0.7, 1.4),
+                    ("NH3", "CO", "NH3/CO (cross-group)", 0.7, 1.4),
                 ]
                 for (sp1, sp2, desc, rmin, rmax) in cross_ratio_tests
                     if haskey(model_data, sp1) && haskey(model_data, sp2) &&
@@ -1559,33 +1579,48 @@ end
                 end
             end
 
-            # ---- Per-cell spatial comparison for CO ----
-            @testset "Per-cell spatial comparison (CO)" begin
-                if haskey(model_data, "CO") && "CO" in ref_species
-                    ref_spatial = ioapi_spatial_pattern(ds, "CO")
-                    julia_spatial = dropdims(sum(model_data["CO"], dims = (3, 4)), dims = (3, 4))
+            # ---- Per-cell spatial comparison for key species ----
+            @testset "Per-cell spatial comparison" begin
+                for sp in ["CO", "NO", "SO2", "NH3"]
+                    if !haskey(model_data, sp) || !(sp in ref_species)
+                        continue
+                    end
+                    ref_spatial = ioapi_spatial_pattern(ds, sp)
+                    julia_spatial = dropdims(sum(model_data[sp], dims = (3, 4)), dims = (3, 4))
 
                     ref_total = sum(ref_spatial)
                     julia_total = sum(julia_spatial)
 
-                    if ref_total > 0 && julia_total > 0
-                        ref_norm = ref_spatial ./ ref_total
-                        julia_norm = julia_spatial ./ julia_total
+                    ref_total > 0 && julia_total > 0 || continue
 
-                        # Normalized RMSE: should be small for well-matched patterns
-                        diff = ref_norm .- julia_norm
-                        nrmse = sqrt(mean(diff .^ 2)) / mean(ref_norm)
-                        @info "CO normalized RMSE: $(round(nrmse, digits=4))"
-                        @test nrmse < 1.0
+                    ref_norm = ref_spatial ./ ref_total
+                    julia_norm = julia_spatial ./ julia_total
 
-                        # Check that the top-emitting cells overlap
-                        ref_flat = vec(ref_norm)
-                        julia_flat = vec(julia_norm)
-                        ref_top10 = Set(sortperm(ref_flat, rev = true)[1:10])
-                        julia_top10 = Set(sortperm(julia_flat, rev = true)[1:10])
-                        overlap = length(intersect(ref_top10, julia_top10))
-                        @info "CO top-10 cell overlap: $overlap / 10"
-                        @test overlap >= 3
+                    # Normalized RMSE (normalized by mean cell value).
+                    # Values are moderate because most grid cells have near-zero emissions
+                    # while a few have large values, so RMS / mean is amplified.
+                    diff = ref_norm .- julia_norm
+                    nrmse = sqrt(mean(diff .^ 2)) / mean(ref_norm)
+                    @info "$sp normalized RMSE: $(round(nrmse, digits=4))"
+                    @test nrmse < 0.8
+
+                    # Check that the top-emitting cells overlap
+                    ref_flat = vec(ref_norm)
+                    julia_flat = vec(julia_norm)
+                    ref_top10 = Set(sortperm(ref_flat, rev = true)[1:10])
+                    julia_top10 = Set(sortperm(julia_flat, rev = true)[1:10])
+                    overlap = length(intersect(ref_top10, julia_top10))
+                    @info "$sp top-10 cell overlap: $overlap / 10"
+                    @test overlap >= 3
+
+                    # Per-cell ratio check: for cells with significant emissions,
+                    # verify the spatial allocation fraction is close
+                    significant = ref_norm .> (mean(ref_norm) * 0.5)
+                    if count(significant) > 3
+                        cell_ratios = julia_norm[significant] ./ ref_norm[significant]
+                        med_cell_ratio = median(cell_ratios)
+                        @info "$sp per-cell median ratio ($(count(significant)) cells): $(round(med_cell_ratio, digits=4))"
+                        @test 0.5 < med_cell_ratio < 2.0
                     end
                 end
             end
@@ -1620,7 +1655,7 @@ end
                     end
                 end
 
-                # All common species should have non-zero totals in both outputs
+                # All common species with non-zero reference should have non-zero Julia output
                 for sp in common_species
                     ref_total = Float64(sum(read_ioapi_var_raw(ds, sp)))
                     julia_total = sum(model_data[sp])
@@ -1629,13 +1664,31 @@ end
                     end
                 end
 
-                # Check that magnitude ratios are within reasonable range.
-                # Expected patterns:
-                # - Direct gas species (CO, NH3, NO, NO2, SO2): ratio ≈ 1.0
-                # - PM species: ratio ≈ 1.0
-                # - VOC-derived species: ratio ≈ 0.8 (SMOKE subtracts HAPs before
-                #   applying NONHAPTOG profile; we apply NONHAPTOG to full VOC)
-                # - NMOG: ratio ≈ 0.7 (composite tracking variable)
+                # --- Per-species magnitude checks for key inorganic species ---
+                # These have 1:1 or simple speciation (no HAP subtraction), so
+                # the ratio should be close to 1.0.
+                @testset "Key species magnitudes" begin
+                    key_species = ["CO", "NO", "NO2", "SO2", "NH3"]
+                    for sp in key_species
+                        if haskey(magnitude_ratios, sp) && !isnan(magnitude_ratios[sp])
+                            r = magnitude_ratios[sp]
+                            @info "Key species $sp magnitude ratio: $(round(r, sigdigits=4))"
+                            @test 0.7 < r < 1.4
+                        end
+                    end
+
+                    # PM species (mass-basis, no MW conversion): ratio should also be close
+                    key_pm = ["PEC", "POC", "PNCOM", "PMOTHR", "PNH4", "PNO3", "PSO4"]
+                    for sp in key_pm
+                        if haskey(magnitude_ratios, sp) && !isnan(magnitude_ratios[sp])
+                            r = magnitude_ratios[sp]
+                            @info "Key PM species $sp magnitude ratio: $(round(r, sigdigits=4))"
+                            @test 0.7 < r < 1.4
+                        end
+                    end
+                end
+
+                # --- Aggregate magnitude checks ---
                 valid_ratios = filter(p -> !isnan(p.second) && p.second > 0, magnitude_ratios)
                 if !isempty(valid_ratios)
                     ratio_vals = collect(values(valid_ratios))
@@ -1644,10 +1697,141 @@ end
                           "max=$(round(maximum(ratio_vals), sigdigits=3))"
 
                     # All species should have ratios within a factor of 2
-                    @test all(r -> 0.5 < r < 2.0, ratio_vals)
+                    for (sp, r) in sort(collect(valid_ratios), by = x -> x[2])
+                        @test 0.5 < r < 2.0
+                    end
 
                     # Median ratio should be close to 1.0
                     @test 0.7 < median(ratio_vals) < 1.3
+                end
+            end
+
+            # ---- Zero-species consistency ----
+            @testset "Zero-species consistency" begin
+                # Species that are zero in reference should also be zero (or absent)
+                # in our output, and vice versa
+                for sp in common_species
+                    ref_total = Float64(sum(read_ioapi_var_raw(ds, sp)))
+                    julia_total = sum(model_data[sp])
+                    if ref_total == 0.0
+                        @test julia_total == 0.0 || !haskey(model_data, sp)
+                    end
+                end
+            end
+
+            # ---- Per-cell per-hour comparison for CO ----
+            @testset "Per-cell per-hour comparison (CO)" begin
+                if haskey(model_data, "CO") && "CO" in ref_species
+                    ref_data = read_ioapi_var_raw(ds, "CO")  # (COL, ROW, LAY, TSTEP)
+                    julia_data = model_data["CO"]  # (ROW, COL, LAY, TSTEP)
+
+                    n_tsteps = min(size(ref_data, 4), size(julia_data, 4))
+                    # Compare normalized hourly spatial patterns for a few timesteps
+                    hourly_corrs = Float64[]
+                    for t in 1:n_tsteps
+                        ref_slice = permutedims(ref_data[:, :, 1, t], (2, 1))  # → (ROW, COL)
+                        julia_slice = julia_data[:, :, 1, t]
+
+                        ref_sum_t = sum(ref_slice)
+                        julia_sum_t = sum(julia_slice)
+                        if ref_sum_t > 0 && julia_sum_t > 0
+                            ref_n = vec(ref_slice) ./ ref_sum_t
+                            julia_n = vec(julia_slice) ./ julia_sum_t
+                            push!(hourly_corrs, cosine_similarity(ref_n, julia_n))
+                        end
+                    end
+                    if length(hourly_corrs) >= 10
+                        med_hourly_corr = median(hourly_corrs)
+                        min_hourly_corr = minimum(hourly_corrs)
+                        @info "CO per-hour spatial correlation: median=$(round(med_hourly_corr, digits=4)), min=$(round(min_hourly_corr, digits=4)) over $(length(hourly_corrs)) timesteps"
+                        @test med_hourly_corr > 0.9
+                        @test min_hourly_corr > 0.8
+                    end
+                end
+            end
+        end
+
+        # ================================================================
+        # Multi-day consistency check
+        # ================================================================
+        # Verify that our pipeline produces consistent results across multiple
+        # days by comparing against additional reference files.
+        # The reference output contains 31 days of August 2018.
+        @testset "Multi-day consistency" begin
+            alt_ref_dir = dirname(ref_file)
+            additional_dates = [Date(2018, 8, 15), Date(2018, 8, 31)]
+
+            for target_date_alt in additional_dates
+                date_str = Dates.format(target_date_alt, "yyyymmdd")
+                alt_ref = joinpath(alt_ref_dir, "emis_mole_rwc_$(date_str)_12LISTOS_cmaq_cb6ae7_2018gg_18j.ncf")
+                isfile(alt_ref) || continue
+
+                @testset "Day $(date_str)" begin
+                    # Rebuild temporal profiles for this day
+                    alt_profiles, alt_xref = build_gentpro_temporal(
+                        parse_atref_gentpro(atref_file),
+                        parse_gentpro_monthly(monthly_file),
+                        parse_gentpro_daily(daily_file),
+                        parse_amptpro_hourly(hourly_file),
+                        parse_amptpro_weekly(weekly_file),
+                        emissions_fips_scc, target_date_alt)
+
+                    alt_ep_start = DateTime(target_date_alt)
+                    alt_ep_end = DateTime(target_date_alt) + Hour(25)
+
+                    # Run temporal + merge
+                    alt_hourly = temporal_allocate(
+                        speciated_with_srg, alt_profiles, alt_xref,
+                        alt_ep_start, alt_ep_end;
+                        timezone_map = timezone_map)
+
+                    alt_species_list = unique(string.(alt_hourly.POLID))
+                    alt_merged = merge_emissions(alt_hourly, locIndex, grid;
+                        species_list = alt_species_list)
+                    alt_hours = [alt_ep_start + Hour(h) for h in 0:24]
+                    alt_model = to_model_ready(alt_merged, grid, alt_hours)
+
+                    NCDatasets.Dataset(alt_ref, "r") do ds2
+                        # Check key species spatial correlation matches reference
+                        for sp in ["CO", "NO"]
+                            if haskey(alt_model, sp) && sp in read_ioapi_species(ds2)
+                                ref_sp = ioapi_spatial_pattern(ds2, sp)
+                                jul_sp = dropdims(sum(alt_model[sp], dims = (3, 4)), dims = (3, 4))
+                                ref_t = sum(ref_sp)
+                                jul_t = sum(jul_sp)
+                                if ref_t > 0 && jul_t > 0
+                                    corr_val = cosine_similarity(
+                                        vec(ref_sp) ./ ref_t,
+                                        vec(jul_sp) ./ jul_t)
+                                    @info "$(date_str) $sp spatial correlation: $(round(corr_val, digits=4))"
+                                    @test corr_val > 0.9
+                                end
+
+                                # Magnitude check
+                                ratio = jul_t > 0 && ref_t > 0 ? (jul_t * 1000.0) / ref_t : NaN
+                                if !isnan(ratio)
+                                    @info "$(date_str) $sp magnitude ratio: $(round(ratio, sigdigits=3))"
+                                    @test 0.5 < ratio < 2.0
+                                end
+                            end
+                        end
+
+                        # Check diurnal pattern
+                        if haskey(alt_model, "CO") && "CO" in read_ioapi_species(ds2)
+                            ref_hr = ioapi_hourly_totals(ds2, "CO")
+                            jul_arr = alt_model["CO"]
+                            jul_hr = [sum(jul_arr[:, :, :, t]) for t in 1:size(jul_arr, 4)]
+                            n = min(length(ref_hr), length(jul_hr))
+                            if n >= 12 && sum(ref_hr[1:n]) > 0 && sum(jul_hr[1:n]) > 0
+                                corr_val = cosine_similarity(
+                                    ref_hr[1:n] ./ sum(ref_hr[1:n]),
+                                    jul_hr[1:n] ./ sum(jul_hr[1:n]))
+                                @info "$(date_str) CO diurnal correlation: $(round(corr_val, digits=4))"
+                                @test corr_val > 0.9
+                            end
+                        end
+                    end
+                    GC.gc()
                 end
             end
         end
