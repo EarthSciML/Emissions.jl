@@ -450,7 +450,11 @@ The temporal allocation follows SMOKE conventions:
 - Monthly factor: fraction of annual total for the given month (sums to 1.0)
 - Weekly factor: relative weight for the day of week (sums to 7.0)
 - Diurnal factor: fraction of daily total for the given hour (sums to 1.0)
-- Hourly rate = ANN_VALUE × monthly_factor × (weekly_factor / 7) × (diurnal_factor × 24)
+- Hourly rate = ANN_VALUE × (monthly_factor × 12) × weekly_factor × (diurnal_factor × 24)
+  This converts from fraction-based profiles to rate multipliers:
+  - monthly_factor × 12: converts from "fraction of annual" to rate modifier (uniform → 1.0)
+  - weekly_factor: day-of-week relative weight (uniform → 1.0, double-weight → 2.0)
+  - diurnal_factor × 24: converts from "fraction of daily" to rate modifier (uniform → 1.0)
 - Diurnal profiles are selected with SMOKE-style day-specific fallback:
   DIURNAL → day name (MONDAY, etc.) → WEEKDAY/WEEKEND → ALLDAY → uniform
 """
@@ -589,8 +593,8 @@ function temporal_allocate(
             wf = dow <= length(weekly_factors) ? weekly_factors[dow] : 1.0
             df = hour_idx <= length(diurnal_factors) ? diurnal_factors[hour_idx] : 1.0 / 24.0
 
-            # hourly_rate = annual_rate * monthly_frac * (weekly_weight/7) * (diurnal_frac * 24)
-            hourly_rate = ann_value * mf * (wf / 7.0) * (df * 24.0)
+            # hourly_rate = annual_rate * (monthly_frac*12) * weekly_weight * (diurnal_frac * 24)
+            hourly_rate = ann_value * (mf * 12.0) * wf * (df * 24.0)
 
             idx += 1
             out_fips[idx] = fips
